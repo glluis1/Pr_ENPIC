@@ -57,3 +57,27 @@ IC_2 <- prop.test(indic_2$x, indic_2$n)
 round(IC_2$conf.int * 100, 2)
 
 # !! Pacientes sin NUTRIC Score no entran en el cálculo
+
+
+# ---- Indicador 4 ----
+
+
+# ---- Indicador 6 ----
+
+# Filtrado de pacientes con NE o NE-NPT
+datos_NE <- datos_uci48 %>% filter(TIPO_SN_Grupo %in% c(1, 3))
+
+# Cálculo del porcentaje
+indic_6 <- datos_NE %>%
+  summarise(
+    n = n(),
+    x = sum(SN_Menos48h == 1),
+    porcentaje = (x / n) * 100
+  )
+
+# Intervalo de confianza
+IC_6 <- prop.test(indic_6$x, indic_6$n)
+round(IC_6$conf.int * 100, 2)
+
+
+# ---- Indicador 7 ----
