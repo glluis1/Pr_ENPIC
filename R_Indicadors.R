@@ -96,6 +96,7 @@ IC_4a$p.value
 
 # Peso ajustado = (actual - ideal) * 0.33 + ideal
 # Peso ideal = 25 * talla^2
+# Referència: Singer et al. (2019)
 
 # Días dentro del rango objetivo
 datos_calorias <- datos_calorias %>% 
@@ -194,3 +195,21 @@ round(IC_6$conf.int * 100, 2)
 
 
 # ---- Indicador 7 ----
+
+# Filtrado de pacientes con NPT o NPT-NE
+datos_NPT <- datos_uci48 %>% filter(TIPO_SN_Grupo %in% c(2, 4))
+
+# Cálculo del porcentaje
+indic_7 <- datos_NPT %>%
+  summarise(
+    n = n(),
+    x = sum(!is.na(INDICA_NTP)),
+    porcentaje = (x / n) * 100
+  )
+
+# Intervalo de confianza
+IC_7 <- prop.test(indic_7$x, indic_7$n, p = 0.9, alternative = "less")
+round(IC_7$conf.int * 100, 2)
+
+
+# ---- Indicador 8 ----
