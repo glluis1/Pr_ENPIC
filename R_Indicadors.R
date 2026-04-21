@@ -261,3 +261,54 @@ IC_8$p.value
 
 
 # ---- Indicador 9 ----
+
+
+# ---- Indicador 12 ----
+
+# Filtrado de pacientes con NPT, NE-NPT o NPT-NE
+datos_NP <- datos_uci48 %>% filter(TIPO_SN_Grupo %in% c(2, 3, 4))
+
+# Pacientes con disfunción hepática
+datos_NP <- datos_NP %>%
+  mutate(
+    # 1. Presencia de colestasis
+    colestasis = as.numeric(
+      if_any(starts_with("FALCALI"), ~ .x > 280) |
+        if_any(starts_with("GAMGT"), ~ .x > 50) |
+        if_any(starts_with("FILIRUB"), ~ .x > 1.2)
+    ),
+    
+    # 2. Presencia de necrosis hepática
+    necrosis = as.numeric(
+      ((GOT1 > 40 | GPT1 > 42) & (FILIRUB1 > 1.2 | INR1 > 1.4)) |
+        ((GOT3 > 40 | GPT3 > 42) & (FILIRUB3 > 1.2 | INR3 > 1.4)) |
+        ((GOT7 > 40 | GPT7 > 42) & (FILIRUB7 > 1.2 | INR7 > 1.4)) |
+        ((GOTA > 40 | GPTA > 42) & (FILIRUBA > 1.2 | INRA > 1.4))
+    ),
+    
+    # 3. Presencia de lesión mixta
+    lesion_mixta = as.numeric(
+      ((FALCALI1 > 280 | GAMGT1 > 50) & (GOT1 > 40 | GPT1 > 42)) |
+        ((FALCALI3 > 280 | GAMGT3 > 50) & (GOT3 > 40 | GPT3 > 42)) |
+        ((FALCALI7 > 280 | GAMGT7 > 50) & (GOT7 > 40 | GPT7 > 42)) |
+        ((FALCALIA > 280 | GAMGTA > 50) & (GOTA > 40 | GPTA > 42))
+    ),
+    
+    # 4. Presencia de disfunción hepática
+    DHANP = as.numeric(colestasis == 1 | necrosis == 1 | lesion_mixta == 1)
+  )
+
+# Cálculo del porcentaje
+indic_12 <- datos_NP %>%
+  summarise(
+    n = n(),
+    x = sum(DHANP == 1, na.rm = TRUE),
+    porcentaje = (x / n) * 100
+  )
+
+# Intervalo de confianza
+IC_12 <- prop.test(indic_12$x, indic_12$n, p = 0.2, alternative = "greater")
+round(IC_12$conf.int * 100, 2)
+
+# Valor p
+IC_12$p.value
