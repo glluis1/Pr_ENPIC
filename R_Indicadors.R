@@ -1,4 +1,4 @@
-# Instalación de paquetes
+# ---- Instalación de paquetes ----
 if (!require("haven")) {
   install.packages("haven")
 }
@@ -8,15 +8,45 @@ library(dplyr)
 library(lubridate)
 
 
-# Carga de datos
+# ---- Carga de datos ----
 datos <- read_sav("ENPIC_BMI_525.sav")
 
 # Acceso a variables
 attr(datos$SUPRE_NPT, "label")
 attr(datos$SUPRE_NPT, "labels")
 
+# Corrección de errores
+datos$Inicio_NPT[49] <- datos$Inicio_NPT[49] - lubridate::years(90)
 
-# Características de la muestra
+# Comprobación de grupos
+datos <- datos %>%
+  mutate(
+    # Conversión a formato de fecha
+    Inicio_NE = parse_date_time(Inicio_NE,
+                                orders = c("ymd HMS", "ymd HM", "ymd"),
+                                tz = "UTC"),
+    Inicio_NPT = parse_date_time(Inicio_NPT,
+                                 orders = c("ymd HMS", "ymd HM", "ymd"),
+                                 tz = "UTC"),
+    
+    # Grupo teórico
+    check = case_when(
+      !is.na(Inicio_NE) & is.na(Inicio_NPT) ~ 1,
+      is.na(Inicio_NE) & !is.na(Inicio_NPT) ~ 2,
+      !is.na(Inicio_NE) & !is.na(Inicio_NPT) & Inicio_NE < Inicio_NPT ~ 3,
+      !is.na(Inicio_NE) & !is.na(Inicio_NPT) & Inicio_NE > Inicio_NPT ~ 4,
+      TRUE ~ NA_real_
+    )
+  )
+
+# Registros erróneos
+datos_comprobacion <- datos %>%
+  select(TIPO_SN_Grupo, check, Inicio_NE, Inicio_NPT) %>%
+  filter(is.na(check) | TIPO_SN_Grupo != check)
+
+
+# ---- Características de la muestra ----
+#
 
 
 # ---- Indicador 1 ----
