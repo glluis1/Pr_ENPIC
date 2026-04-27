@@ -6,131 +6,208 @@ if (!require("haven")) {
 library(haven)
 library(dplyr)
 library(lubridate)
+library(knitr)
+library(tidyr)
+library(ggplot2)
 
 
-# ---- Carga de datos ----
+# ---- Preparación de los datos ----
+
+# Carga de datos
 datos <- read_sav("ENPIC_BMI_525.sav")
 
 # Acceso a variables
 attr(datos$SUPRE_NPT, "label")
 attr(datos$SUPRE_NPT, "labels")
 
-# Corrección de errores
-datos$Inicio_NPT[49] <- datos$Inicio_NPT[49] - lubridate::years(90)
+# Valores faltantes
+datos <- datos %>% filter(!is.na(FINICNE2) | !is.na(FINICNPT2))
 
 # Comprobación de grupos
 datos <- datos %>%
   mutate(
     # Conversión a formato de fecha
-    Inicio_NE = parse_date_time(Inicio_NE,
+    Inicio_NE = parse_date_time(FINICNE2,
                                 orders = c("ymd HMS", "ymd HM", "ymd"),
                                 tz = "UTC"),
-    Inicio_NPT = parse_date_time(Inicio_NPT,
+    Inicio_NPT = parse_date_time(FINICNPT2,
                                  orders = c("ymd HMS", "ymd HM", "ymd"),
                                  tz = "UTC"),
     
     # Grupo teórico
     check = case_when(
-      !is.na(Inicio_NE) & is.na(Inicio_NPT) ~ 1,
-      is.na(Inicio_NE) & !is.na(Inicio_NPT) ~ 2,
-      !is.na(Inicio_NE) & !is.na(Inicio_NPT) & Inicio_NE < Inicio_NPT ~ 3,
-      !is.na(Inicio_NE) & !is.na(Inicio_NPT) & Inicio_NE > Inicio_NPT ~ 4,
+      !is.na(FINICNE2) & is.na(FINICNPT2) ~ 1,
+      is.na(FINICNE2) & !is.na(FINICNPT2) ~ 2,
+      !is.na(FINICNE2) & !is.na(FINICNPT2) & FINICNE2 < FINICNPT2 ~ 3,
+      !is.na(FINICNE2) & !is.na(FINICNPT2) & FINICNE2 > FINICNPT2 ~ 4,
       TRUE ~ NA_real_
     )
   )
 
 # Registros erróneos
-datos_comprobacion <- datos %>%
-  select(TIPO_SN_Grupo, check, Inicio_NE, Inicio_NPT) %>%
+datos_comprobacion_grupos <- datos %>%
+  select(IDICOMEP, TIPO_SN_Grupo, check, FINICNE2, FINICNPT2) %>%
   filter(is.na(check) | TIPO_SN_Grupo != check)
+
+datos_comprobacion_fechas <- datos %>%
+  select(IDICOMEP, FECHAING, INGUCI, FINICNE2, FFINNE2, FINICNPT2, FFINNPT2) %>%
+  filter(FINICNE2 < FECHAING | FINICNPT2 < FECHAING)
+
+# Corrección de errores
+datos$FINICNPT2[datos$IDICOMEP == 4007] <- 
+  datos$FINICNPT2[datos$IDICOMEP == 4007] - lubridate::years(90)
+
+datos$TIPO_SN_Grupo[datos$IDICOMEP == 34006] <- 3
+datos$TIPO_SN_Grupo[datos$IDICOMEP == 34007] <- 3
 
 
 # ---- Características de la muestra ----
 #
 
 
-# ---- Indicador 1 ----
+# ---- I1. Identificación de enfermos en riesgo nutricional ----
 
-# Filtrado de pacientes con estancia > 48 h
-datos_uci48 <- datos %>% filter(DIASUCI > 2) # Todos
-
-# Cálculo del porcentaje
-indic_1 <- datos_uci48 %>%
+resumen_i1 <- datos %>%
+  # 1. Filtrado de pacientes con estancia > 48 h
+  filter(DIASUCI >= 2) %>% # Todos
+  
+  # 2. Cálculo del porcentaje y los IC
   summarise(
-    n = n(),
-    x = sum(!is.na(NUTRIC_Score)),
-    porcentaje = (x / n) * 100
+    Indicador = "1. Riesgo nutricional",
+    Numerador = sum(!is.na(NUTRIC_Score)),
+    Denominador = n(),
+    `Resultado (%)` = round((Numerador / Denominador) * 100, 2),
+    `IC 95% (inf – sup)` = 
+      sprintf("(%.2f – %.2f)", 
+              prop.test(Numerador, Denominador)$conf.int[1] * 100, 
+              prop.test(Numerador, Denominador)$conf.int[2] * 100),
+    Estándar = "100%"
   )
-
-# Intervalo de confianza
-IC_1 <- prop.test(indic_1$x, indic_1$n)
-round(IC_1$conf.int * 100, 2)
 
 # No tiene sentido el contraste de hipótesis porque al comparar 
 # con el estándar (100%, objetivo ideal) siempre dará significación
 
 
-# ---- Indicador 2 ----
+# ---- I2. Valoración del estado nutricional ----
 
-# Filtrado de pacientes con riesgo nutricional (NUTRIC Score > 5)
-datos_riesgo_nutr <- datos_uci48 %>% filter(NUTRIC_Score > 5)
-
-# Cálculo del porcentaje
-indic_2 <- datos_riesgo_nutr %>%
+resumen_i2 <- datos %>%
+  # 1. Filtrado de pacientes con riesgo nutricional (NUTRIC Score > 5)
+  filter(NUTRIC_Score >= 5) %>%
+  
+  # 2. Cálculo del porcentaje y los IC
   summarise(
-    n = n(),
-    x = sum(!is.na(VGSING2)),
-    porcentaje = (x / n) * 100
+    Indicador = "2. Estado nutricional",
+    Numerador = sum(!is.na(VGSING2)),
+    Denominador = n(),
+    `Resultado (%)` = round((Numerador / Denominador) * 100, 2),
+    `IC 95% (inf – sup)` = 
+      sprintf("(%.2f – %.2f)", 
+              prop.test(Numerador, Denominador)$conf.int[1] * 100, 
+              prop.test(Numerador, Denominador)$conf.int[2] * 100),
+    Estándar = "100%"
   )
-
-# Intervalo de confianza
-IC_2 <- prop.test(indic_2$x, indic_2$n)
-round(IC_2$conf.int * 100, 2)
 
 # !! Pacientes sin NUTRIC Score no entran en el cálculo
 
 
-# ---- Indicador 4a ----
+# ---- I4. Adecuación del aporte calórico y proteico ----
 
-# Media del aporte calórico a partir del 4º día
-datos_aporte <- datos_uci48 %>%
+# Cálculos adicionales
+datos <- datos %>%
   mutate(
-    # 1. Cálculo de la media absoluta en kcal/día
-    media_calorias = rowMeans(pick(num_range("CALORIA", 4:14)), na.rm = TRUE),
+    # 1. Cálculo del peso ideal y del peso ajustado
+    Peso_ideal = 25 * (TALLA^2),
+    Peso_ajustado = (PESOACT - Peso_ideal) * 0.33 + Peso_ideal,
     
-    # 2. Cálculo del peso ideal
-    peso_ideal = 25 * (TALLA^2),
+    # 2. Peso a utilizar según IMC
+    Peso_calculo = if_else(BMI < 30, PESOACT, Peso_ajustado),
     
-    # 3. Peso a utilizar según IMC
-    peso_calculo = if_else(BMI < 30,
-                           PESOACT,
-                           (PESOACT - peso_ideal) * 0.33 + peso_ideal),
+    # 3. Media del aporte calórico los 3 primeros días
+    Media_cal_aguda = 
+      rowMeans(pick(num_range("CALORIA", 1:3)), na.rm = TRUE) / Peso_calculo,
     
-    # 4. Cálculo de la media en kcal/kg/día
-    media_kg_calorias = media_calorias / peso_calculo
+    # 4. Media del aporte calórico a partir del 4º día
+    Media_cal_estable = 
+      rowMeans(pick(num_range("CALORIA", 4:14)), na.rm = TRUE) / Peso_calculo,
+    
+    # 3. Media del aporte proteico los 3 primeros días
+    Media_prot_aguda = 
+      rowMeans(pick(num_range("PROT", 1:3)), na.rm = TRUE) / Peso_calculo,
+    
+    # 4. Media del aporte proteico a partir del 4º día
+    Media_prot_estable = 
+      rowMeans(pick(num_range("PROT", 4:14)), na.rm = TRUE) / Peso_calculo
   )
-
-# Cálculo del porcentaje
-indic_4a <- datos_aporte %>%
-  summarise(
-    n = n(),
-    x = sum(media_kg_calorias >= 25 & media_kg_calorias <= 30, na.rm = TRUE),
-    porcentaje = (x / n) * 100
-  )
-
-# Intervalo de confianza
-IC_4a <- prop.test(indic_4a$x, indic_4a$n, p = 0.8, alternative = "less")
-round(IC_4a$conf.int * 100, 2)
-
-# Valor p
-IC_4a$p.value
 
 # Peso ajustado = (actual - ideal) * 0.33 + ideal
 # Peso ideal = 25 * talla^2
 # Referència: Singer et al. (2019)
 
-# Días dentro del rango objetivo
-datos_aporte <- datos_aporte %>% 
+# Aporte calórico
+resumen_i4_cal <- datos %>%
+  # 1. Filtrado de pacientes con datos en fase estable
+  filter(!is.na(Media_cal_estable)) %>%
+  
+  # 2. Cálculo del porcentaje y los IC
+  summarise(
+    Indicador = "4a. Aporte calórico",
+    Numerador = sum(Media_cal_estable >= 25 & Media_cal_estable <= 30, 
+                    na.rm = TRUE),
+    Denominador = n(),
+    `Resultado (%)` = round((Numerador / Denominador) * 100, 2),
+    `IC 95% (inf – sup)` = 
+      sprintf("(%.2f – %.2f)", 
+              prop.test(Numerador, Denominador)$conf.int[1] * 100, 
+              prop.test(Numerador, Denominador)$conf.int[2] * 100),
+    Estándar = ">80%"
+  )
+
+# Aporte proteico
+resumen_i4_prot <- datos %>%
+  # 1. Filtrado de pacientes con datos en fase estable
+  filter(!is.na(Media_prot_estable)) %>%
+  
+  # 2. Cálculo del porcentaje y los IC
+  summarise(
+    Indicador = "4b. Aporte proteico",
+    Numerador = sum(Media_prot_estable >= 1.3, na.rm = TRUE),
+    Denominador = n(),
+    `Resultado (%)` = round((Numerador / Denominador) * 100, 2),
+    `IC 95% (inf – sup)` = 
+      sprintf("(%.2f – %.2f)", 
+              prop.test(Numerador, Denominador, p = 0.8)$conf.int[1] * 100, 
+              prop.test(Numerador, Denominador, p = 0.8)$conf.int[2] * 100),
+    Estándar = ">80%"
+  )
+
+resumen_i4 <- bind_rows(resumen_i4_cal, resumen_i4_prot)
+rm(resumen_i4_cal, resumen_i4_prot)
+
+# Análisis del error en el aporte calórico
+error_cal <- datos %>%
+  # 1. Filtrado de pacientes con datos en fase estable
+  filter(!is.na(Media_cal_estable)) %>%
+  
+  # 2. Casos de error
+  mutate(
+    Categoria_cal = case_when(
+      Media_cal_estable < 25 ~ "Hiponutrición",
+      Media_cal_estable >= 25 & Media_cal_estable <= 30 ~ "Aporte adecuado",
+      Media_cal_estable > 30 ~ "Hipernutrición"
+    )
+  ) %>%
+  
+  # 3. Resumen
+  group_by(Categoria_cal) %>%
+  summarise(
+    Total_grupo = n(),
+    Porcentaje = round(
+      (Total_grupo / nrow(filter(datos, !is.na(Media_cal_estable)))) * 100, 2
+    )
+  )
+
+# Días dentro del rango objetivo (calorías)
+datos <- datos %>%
   rowwise %>%
   mutate(
     # Días con datos (no NA)
@@ -138,8 +215,8 @@ datos_aporte <- datos_aporte %>%
     
     # Días dentro del rango
     n_dias_rango_cal = sum(
-      (c_across(CALORIA4:CALORIA14) / peso_calculo) >= 25 &
-        (c_across(CALORIA4:CALORIA14) / peso_calculo) <= 30,
+      (c_across(CALORIA4:CALORIA14) / Peso_calculo) >= 25 &
+        (c_across(CALORIA4:CALORIA14) / Peso_calculo) <= 30,
       na.rm = TRUE
     ),
     
@@ -150,36 +227,8 @@ datos_aporte <- datos_aporte %>%
   ) %>%
   ungroup()
 
-
-# ---- Indicador 4b ----
-
-# Media del aporte proteico a partir del 4º día
-datos_aporte <- datos_aporte %>%
-  mutate(
-    # 1. Cálculo de la media absoluta en g/día
-    media_proteinas = rowMeans(pick(num_range("PROT", 4:14)), na.rm = TRUE),
-    
-    # 2. Cálculo de la media en g/kg/día
-    media_kg_proteinas = media_proteinas / peso_calculo
-  )
-
-# Cálculo del porcentaje
-indic_4b <- datos_aporte %>%
-  summarise(
-    n = n(),
-    x = sum(media_kg_proteinas >= 1.3, na.rm = TRUE),
-    porcentaje = (x / n) * 100
-  )
-
-# Intervalo de confianza
-IC_4b <- prop.test(indic_4b$x, indic_4b$n, p = 0.8, alternative = "less")
-round(IC_4b$conf.int * 100, 2)
-
-# Valor p
-IC_4b$p.value
-
-# Días dentro del rango objetivo
-datos_aporte <- datos_aporte %>% 
+# Días dentro del rango objetivo (proteínas)
+datos <- datos %>% 
   rowwise %>%
   mutate(
     # Días con datos (no NA)
@@ -187,7 +236,7 @@ datos_aporte <- datos_aporte %>%
     
     # Días dentro del rango
     n_dias_rango_prot = sum(
-      (c_across(PROT4:PROT14) / peso_calculo) >= 1.3,
+      (c_across(PROT4:PROT14) / Peso_calculo) >= 1.3,
       na.rm = TRUE
     ),
     
@@ -198,22 +247,27 @@ datos_aporte <- datos_aporte %>%
   ) %>%
   ungroup()
 
-# ---- Indicador 4 ----
+# Boxplot
+datos_boxplot <- datos %>%
+  select(cumplimiento_cal, cumplimiento_prot) %>%
+  pivot_longer(cols = everything(),
+               names_to = "Indicador",
+               values_to = "Porcentaje") %>%
+  mutate(Indicador = recode(Indicador,
+                            "cumplimiento_cal" = "Calorías",
+                            "cumplimiento_prot" = "Proteínas")) %>%
+  filter(!is.na(Porcentaje))
 
-# Cálculo del porcentaje conjunto
-indic_4 <- datos_aporte %>%
-  summarise(
-    n = n(),
-    x = sum(media_kg_calorias >= 25 & media_kg_proteinas >= 1.3, na.rm = TRUE),
-    porcentaje = (x / n) * 100
-  )
+ggplot(datos_boxplot, aes(x = Indicador, y = Porcentaje, fill = Indicador)) +
+  geom_boxplot(alpha = 0.6) +
+  scale_fill_viridis_d(option = "viridis") +
+  labs(title = "Distribución del aporte nutricional en fase estable",
+       y = "% de días en rango por paciente",
+       x = "") +
+  theme_minimal() +
+  theme(legend.position = "none")
 
-# Intervalo de confianza
-IC_4 <- prop.test(indic_4$x, indic_4$n, p = 0.8, alternative = "less")
-round(IC_4$conf.int * 100, 2)
-
-# Valor p
-IC_4$p.value
+# Para inferencia: tabla de contingencia fase aguda - fase estable
 
 
 # ---- Indicador 6 ----
@@ -342,3 +396,11 @@ round(IC_12$conf.int * 100, 2)
 
 # Valor p
 IC_12$p.value
+
+
+# ---- Tabla resumen ----
+
+# Tabla de indicadores
+tabla_indicadores <- bind_rows(resumen_i1, resumen_i2)
+
+kable(tabla_indicadores)
