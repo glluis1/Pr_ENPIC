@@ -217,6 +217,47 @@ kable(error_cal)
 ```
 
 ```{r}
+# Días dentro del rango objetivo (calorías)
+datos <- datos %>%
+  rowwise %>%
+  mutate(
+    # Días con datos (no NA)
+    n_dias_cal = sum(!is.na(c_across(CALORIA4:CALORIA14))),
+    
+    # Días dentro del rango
+    n_dias_rango_cal = sum(
+      (c_across(CALORIA4:CALORIA14) / Peso_calculo) >= 25 &
+        (c_across(CALORIA4:CALORIA14) / Peso_calculo) <= 30,
+      na.rm = TRUE
+    ),
+    
+    # Porcentaje de cumplimiento
+    cumplimiento_cal = if_else(n_dias_cal > 0,
+                           (n_dias_rango_cal / n_dias_cal) * 100,
+                           NA_real_)
+  ) %>%
+  ungroup()
+
+# Días dentro del rango objetivo (proteínas)
+datos <- datos %>% 
+  rowwise %>%
+  mutate(
+    # Días con datos (no NA)
+    n_dias_prot = sum(!is.na(c_across(PROT4:PROT14))),
+    
+    # Días dentro del rango
+    n_dias_rango_prot = sum(
+      (c_across(PROT4:PROT14) / Peso_calculo) >= 1.3,
+      na.rm = TRUE
+    ),
+    
+    # Porcentaje de cumplimiento
+    cumplimiento_prot = if_else(n_dias_prot > 0,
+                           (n_dias_rango_prot / n_dias_prot) * 100,
+                           NA_real_)
+  ) %>%
+  ungroup()
+
 # Boxplot
 datos_boxplot <- datos %>%
   select(cumplimiento_cal, cumplimiento_prot) %>%
@@ -239,3 +280,201 @@ ggplot(datos_boxplot, aes(x = Indicador, y = Porcentaje, fill = Indicador)) +
 ```
 
 ## Nutrición enteral precoz
+
+El nivel de adherencia en este caso es notable: 279 de 375 pacientes (74,4%, IC 69,61-78,68) reciben nutrición enteral (NE) durante las primeras 48h de evolución. Aun así, está lejos del estándar, lo cual indica un retraso sistémico en el inicio de la NE.
+
+```{r}
+# ---- I6. Nutrición enteral precoz ----
+
+resumen_i6 <- datos %>%
+  # 1. Filtrado de pacientes con NE o NE-NPT e indicación de NE
+  filter(TIPO_SN_Grupo %in% c(1, 3), !is.na(INDICA_NE)) %>%
+  
+  # 2. Cálculo del porcentaje y los IC
+  summarise(
+    Indicador = "6. NE precoz",
+    Numerador = sum(SN_Menos48h == 1),
+    Denominador = n(),
+    `Resultado (%)` = round((Numerador / Denominador) * 100, 2),
+    `IC 95% (inf – sup)` = 
+      sprintf("(%.2f – %.2f)", 
+              prop.test(Numerador, Denominador)$conf.int[1] * 100, 
+              prop.test(Numerador, Denominador)$conf.int[2] * 100),
+    Estándar = "100%"
+  )
+```
+
+## Uso adecuado de nutrición parenteral total (NPT)
+
+Existe indicación de nutrición parenteral total (NPT) en 132 de los 193 pacientes (68,4%, IC 61,26-74,78) que reciben NPT. Este resultado también se aleja del estándar de referencia del 90%.
+
+```{r}
+# ---- I7. Uso adecuado de NPT ----
+
+resumen_i7 <- datos %>%
+  # 1. Filtrado de pacientes que reciben NPT
+  filter(!is.na(FINICNPT2)) %>%
+  
+  # 2. Cálculo del porcentaje y los IC
+  summarise(
+    Indicador = "7. NPT adecuada",
+    Numerador = sum(!is.na(INDICA_NTP) | !is.na(INDICA_NTP_PocoAporte)),
+    Denominador = n(),
+    `Resultado (%)` = round((Numerador / Denominador) * 100, 2),
+    `IC 95% (inf – sup)` = 
+      sprintf("(%.2f – %.2f)", 
+              prop.test(Numerador, Denominador, 0.9)$conf.int[1] * 100, 
+              prop.test(Numerador, Denominador, 0.9)$conf.int[2] * 100),
+    Estándar = ">90%"
+  )
+```
+
+## Adecuación temporal del inicio de la nutrición parenteral complementaria (NPC)
+
+Solo 10 de 163 pacientes (6,13%, IC 3,15-11,30) que al 4º día no alcanzan al menos el 60% de los requerimientos nutricionales reciben nutrición parenteral complementaria (NPC). El resultado es muy bajo en comparación con el estándar del 90%.
+
+```{r}
+# ---- I8. Adecuación temporal de la NPC ----
+
+resumen_i8 <- datos %>%
+  # 1. Pacientes con NE o NE-NPT y valores registradps del 4º día 
+  filter(TIPO_SN_Grupo %in% c(1, 3), !is.na(CALORIA4), !is.na(PROT4)) %>%
+  
+  # 2. Pacientes con <60% del aporte nutricional
+  filter(CALORIA4 < (15 * Peso_calculo) | PROT4 < (0.8 * Peso_calculo)) %>%
+  
+  # 3. Tiempo hasta inicio de NPC
+  mutate(
+    FINICNE2 = ymd_hms(FINICNE2),
+    FINICNPT2 = ymd_hms(FINICNPT2),
+    dias_npc = as.numeric(difftime(FINICNPT2, FINICNE2, units = "days"))
+  ) %>%
+  
+  # 4. Cálculo del porcentaje y los IC
+  summarise(
+    Indicador = "8. NPC adecuada",
+    Numerador = sum(dias_npc <= 5, na.rm = TRUE),
+    Denominador = n(),
+    `Resultado (%)` = round((Numerador / Denominador) * 100, 2),
+    `IC 95% (inf – sup)` = 
+      sprintf("(%.2f – %.2f)", 
+              prop.test(Numerador, Denominador, 0.9)$conf.int[1] * 100, 
+              prop.test(Numerador, Denominador, 0.9)$conf.int[2] * 100),
+    Estándar = ">90%"
+  )
+```
+
+## Monitorización de la nutrición enteral
+
+[Pendent]
+
+## Definición Disfunción Hepática Asociada a la Nutrición Parenteral (DHANP)
+
+De los 101 pacientes que pasan más de 7 días con NP, 76 (75,2%, IC 65,48-83,06) cumplen los criterios de Disfunción Hepática Asociada a la Nutrición Parenteral (DHANP). Es un valor muy elevado en comparación con el estándar de referencia del 20%, debido principalmente a la presencia de colestasis (98,7% de pacientes).
+
+```{r}
+# ---- I12. Disfunción hepática asociada a la NP ----
+
+resumen_i12 <- datos %>%
+  # 1. Filtrado de pacientes que reciben NPT durante al menos 7 días
+  filter(TOTALNPT22 >= 7) %>%
+  
+  # 2. Pacientes con disfunción hepática según grupo
+  mutate(
+    Colestasis = case_when(
+      TIPO_SN_Grupo %in% c(2, 4) ~ 
+        (FALCALI7 > 280 | GAMGT7 > 50 | FILIRUB7 > 1.2 |
+           FALCALIA > 280 | GAMGTA > 50 | FILIRUBA > 1.2),
+      TRUE ~ (FALCALIA > 280 | GAMGTA > 50 | FILIRUBA > 1.2)
+    ),
+    
+    Necrosis = case_when(
+      TIPO_SN_Grupo %in% c(2, 4) ~
+        ((GOT7 > 40 | GPT7 > 42) & (FILIRUB7 > 1.2 | INR7 > 1.4)) |
+        ((GOTA > 40 | GPTA > 42) & (FILIRUBA > 1.2 | INRA > 1.4)),
+      TRUE ~ ((GOTA > 40 | GPTA > 42) & (FILIRUBA > 1.2 | INRA > 1.4))
+    ),
+    
+    Lesion_mixta = case_when(
+      TIPO_SN_Grupo %in% c(2, 4) ~
+        ((FALCALIA > 280 | GAMGTA > 50) & (GOTA > 40 | GPTA > 42)) |
+        ((FALCALIA > 280 | GAMGTA > 50) & (GOTA > 40 | GPTA > 42)),
+      TRUE ~ ((FALCALIA > 280 | GAMGTA > 50) & (GOTA > 40 | GPTA > 42))
+    ),
+    
+    DHANP = if_else(Colestasis | Necrosis | Lesion_mixta, 1, 0)
+  ) %>%
+  
+  # 3. Cálculo del porcentaje y los IC
+  summarise(
+    Indicador = "12. DHANP",
+    Numerador = sum(DHANP == 1, na.rm = TRUE),
+    Denominador = n(),
+    `Resultado (%)` = round((Numerador / Denominador) * 100, 2),
+    `IC 95% (inf – sup)` = 
+      sprintf("(%.2f – %.2f)", 
+              prop.test(Numerador, Denominador, 0.2)$conf.int[1] * 100, 
+              prop.test(Numerador, Denominador, 0.2)$conf.int[2] * 100),
+    Estándar = "<20%"
+  )
+```
+
+```{r}
+# DHANP por diagnóstico
+tipo_dhanp <- datos %>%
+  # 1. Filtrado de pacientes que reciben NPT durante al menos 7 días
+  filter(TOTALNPT22 >= 7) %>%
+  
+  # 2. Pacientes con disfunción hepática según grupo
+  mutate(
+    Colestasis = case_when(
+      TIPO_SN_Grupo %in% c(2, 4) ~ 
+        (FALCALI7 > 280 | GAMGT7 > 50 | FILIRUB7 > 1.2 |
+           FALCALIA > 280 | GAMGTA > 50 | FILIRUBA > 1.2),
+      TRUE ~ (FALCALIA > 280 | GAMGTA > 50 | FILIRUBA > 1.2)
+    ),
+    
+    Necrosis = case_when(
+      TIPO_SN_Grupo %in% c(2, 4) ~
+        ((GOT7 > 40 | GPT7 > 42) & (FILIRUB7 > 1.2 | INR7 > 1.4)) |
+        ((GOTA > 40 | GPTA > 42) & (FILIRUBA > 1.2 | INRA > 1.4)),
+      TRUE ~ ((GOTA > 40 | GPTA > 42) & (FILIRUBA > 1.2 | INRA > 1.4))
+    ),
+    
+    Lesion_mixta = case_when(
+      TIPO_SN_Grupo %in% c(2, 4) ~
+        ((FALCALIA > 280 | GAMGTA > 50) & (GOTA > 40 | GPTA > 42)) |
+        ((FALCALIA > 280 | GAMGTA > 50) & (GOTA > 40 | GPTA > 42)),
+      TRUE ~ ((FALCALIA > 280 | GAMGTA > 50) & (GOTA > 40 | GPTA > 42))
+    ),
+    
+    DHANP = if_else(Colestasis | Necrosis | Lesion_mixta, 1, 0)
+  ) %>%
+  
+  summarise(
+   Colestasis = round(mean(Colestasis, na.rm = TRUE) * 100, 2),
+   Necrosis = round(mean(Necrosis, na.rm = TRUE) * 100, 2),
+   Mixta = round(mean(Lesion_mixta, na.rm = TRUE) * 100, 2)
+  )
+
+kable(tipo_dhanp)
+```
+
+## Resumen de indicadores
+
+```{r}
+# ---- Tabla resumen ----
+
+# Tabla de indicadores
+tabla_indicadores <- bind_rows(resumen_i1, resumen_i2, resumen_i4, resumen_i6,
+                               resumen_i7, resumen_i8, resumen_i12)
+
+kable(tabla_indicadores)
+```
+
+# Anexo. Código R
+
+```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
+
+```
+

@@ -270,76 +270,74 @@ ggplot(datos_boxplot, aes(x = Indicador, y = Porcentaje, fill = Indicador)) +
 # Para inferencia: tabla de contingencia fase aguda - fase estable
 
 
-# ---- Indicador 6 ----
+# ---- I6. Nutrición enteral precoz ----
 
-# Filtrado de pacientes con NE o NE-NPT
-datos_NE <- datos_uci48 %>% filter(TIPO_SN_Grupo %in% c(1, 3))
-
-# Cálculo del porcentaje
-indic_6 <- datos_NE %>%
+resumen_i6 <- datos %>%
+  # 1. Filtrado de pacientes con NE o NE-NPT e indicación de NE
+  filter(TIPO_SN_Grupo %in% c(1, 3), !is.na(INDICA_NE)) %>%
+  
+  # 2. Cálculo del porcentaje y los IC
   summarise(
-    n = n(),
-    x = sum(SN_Menos48h == 1),
-    porcentaje = (x / n) * 100
+    Indicador = "6. NE precoz",
+    Numerador = sum(SN_Menos48h == 1),
+    Denominador = n(),
+    `Resultado (%)` = round((Numerador / Denominador) * 100, 2),
+    `IC 95% (inf – sup)` = 
+      sprintf("(%.2f – %.2f)", 
+              prop.test(Numerador, Denominador)$conf.int[1] * 100, 
+              prop.test(Numerador, Denominador)$conf.int[2] * 100),
+    Estándar = "100%"
   )
 
-# Intervalo de confianza
-IC_6 <- prop.test(indic_6$x, indic_6$n)
-round(IC_6$conf.int * 100, 2)
 
+# ---- I7. Uso adecuado de NPT ----
 
-# ---- Indicador 7 ----
-
-# Filtrado de pacientes con NPT o NPT-NE
-datos_NPT <- datos_uci48 %>% filter(TIPO_SN_Grupo %in% c(2, 4))
-
-# Cálculo del porcentaje
-indic_7 <- datos_NPT %>%
+resumen_i7 <- datos %>%
+  # 1. Filtrado de pacientes que reciben NPT
+  filter(!is.na(FINICNPT2)) %>%
+  
+  # 2. Cálculo del porcentaje y los IC
   summarise(
-    n = n(),
-    x = sum(!is.na(INDICA_NTP)),
-    porcentaje = (x / n) * 100
+    Indicador = "7. NPT adecuada",
+    Numerador = sum(!is.na(INDICA_NTP) | !is.na(INDICA_NTP_PocoAporte)),
+    Denominador = n(),
+    `Resultado (%)` = round((Numerador / Denominador) * 100, 2),
+    `IC 95% (inf – sup)` = 
+      sprintf("(%.2f – %.2f)", 
+              prop.test(Numerador, Denominador, 0.9)$conf.int[1] * 100, 
+              prop.test(Numerador, Denominador, 0.9)$conf.int[2] * 100),
+    Estándar = ">90%"
   )
 
-# Intervalo de confianza
-IC_7 <- prop.test(indic_7$x, indic_7$n, p = 0.9, alternative = "less")
-round(IC_7$conf.int * 100, 2)
 
-# Valor p
-IC_7$p.value
+# ---- I8. Adecuación temporal de la NPC ----
 
-
-# ---- Indicador 8 ----
-
-# Filtrado
-datos_NPC <- datos_aporte %>%
+resumen_i8 <- datos %>%
   # 1. Pacientes con NE o NE-NPT y valores registradps del 4º día 
   filter(TIPO_SN_Grupo %in% c(1, 3), !is.na(CALORIA4), !is.na(PROT4)) %>%
   
   # 2. Pacientes con <60% del aporte nutricional
-  filter(CALORIA4 < (15 * peso_calculo) | PROT4 < (0.8 * peso_calculo)) %>%
+  filter(CALORIA4 < (15 * Peso_calculo) | PROT4 < (0.8 * Peso_calculo)) %>%
   
   # 3. Tiempo hasta inicio de NPC
   mutate(
-    Inicio_NE = ymd_hms(Inicio_NE),
-    Inicio_NPT = ymd_hms(Inicio_NPT),
-    dias_npc = as.numeric(difftime(Inicio_NPT, Inicio_NE, units = "days"))
-  )
+    FINICNE2 = ymd_hms(FINICNE2),
+    FINICNPT2 = ymd_hms(FINICNPT2),
+    dias_npc = as.numeric(difftime(FINICNPT2, FINICNE2, units = "days"))
+  ) %>%
   
-# Cálculo del porcentaje
-indic_8 <- datos_NPC %>%
+  # 4. Cálculo del porcentaje y los IC
   summarise(
-    n = n(),
-    x = sum(dias_npc <= 5, na.rm = TRUE),
-    porcentaje = (x / n) * 100
+    Indicador = "8. NPC adecuada",
+    Numerador = sum(dias_npc <= 5, na.rm = TRUE),
+    Denominador = n(),
+    `Resultado (%)` = round((Numerador / Denominador) * 100, 2),
+    `IC 95% (inf – sup)` = 
+      sprintf("(%.2f – %.2f)", 
+              prop.test(Numerador, Denominador, 0.9)$conf.int[1] * 100, 
+              prop.test(Numerador, Denominador, 0.9)$conf.int[2] * 100),
+    Estándar = ">90%"
   )
-
-# Intervalo de confianza
-IC_8 <- prop.test(indic_8$x, indic_8$n, p = 0.9, alternative = "less")
-round(IC_8$conf.int * 100, 2)
-
-# Valor p
-IC_8$p.value
 
 # Aporte nutricional 60%: 15 kcal/kg/día y 0.8 g/kg/día
 
@@ -347,60 +345,91 @@ IC_8$p.value
 # ---- Indicador 9 ----
 
 
-# ---- Indicador 12 ----
+# ---- I12. Disfunción hepática asociada a la NP ----
 
-# Filtrado de pacientes con NPT, NE-NPT o NPT-NE
-datos_NP <- datos_uci48 %>% filter(TIPO_SN_Grupo %in% c(2, 3, 4))
-
-# Pacientes con disfunción hepática
-datos_NP <- datos_NP %>%
+resumen_i12 <- datos %>%
+  # 1. Filtrado de pacientes que reciben NPT durante al menos 7 días
+  filter(TOTALNPT22 >= 7) %>%
+  
+  # 2. Pacientes con disfunción hepática según grupo
   mutate(
-    # 1. Presencia de colestasis
-    colestasis = as.numeric(
-      if_any(starts_with("FALCALI"), ~ .x > 280) |
-        if_any(starts_with("GAMGT"), ~ .x > 50) |
-        if_any(starts_with("FILIRUB"), ~ .x > 1.2)
+    Colestasis = case_when(
+      TIPO_SN_Grupo %in% c(2, 4) ~ 
+        (FALCALI7 > 280 | GAMGT7 > 50 | FILIRUB7 > 1.2 |
+           FALCALIA > 280 | GAMGTA > 50 | FILIRUBA > 1.2),
+      TRUE ~ (FALCALIA > 280 | GAMGTA > 50 | FILIRUBA > 1.2)
     ),
     
-    # 2. Presencia de necrosis hepática
-    necrosis = as.numeric(
-      ((GOT1 > 40 | GPT1 > 42) & (FILIRUB1 > 1.2 | INR1 > 1.4)) |
-        ((GOT3 > 40 | GPT3 > 42) & (FILIRUB3 > 1.2 | INR3 > 1.4)) |
+    Necrosis = case_when(
+      TIPO_SN_Grupo %in% c(2, 4) ~
         ((GOT7 > 40 | GPT7 > 42) & (FILIRUB7 > 1.2 | INR7 > 1.4)) |
-        ((GOTA > 40 | GPTA > 42) & (FILIRUBA > 1.2 | INRA > 1.4))
+        ((GOTA > 40 | GPTA > 42) & (FILIRUBA > 1.2 | INRA > 1.4)),
+      TRUE ~ ((GOTA > 40 | GPTA > 42) & (FILIRUBA > 1.2 | INRA > 1.4))
     ),
     
-    # 3. Presencia de lesión mixta
-    lesion_mixta = as.numeric(
-      ((FALCALI1 > 280 | GAMGT1 > 50) & (GOT1 > 40 | GPT1 > 42)) |
-        ((FALCALI3 > 280 | GAMGT3 > 50) & (GOT3 > 40 | GPT3 > 42)) |
-        ((FALCALI7 > 280 | GAMGT7 > 50) & (GOT7 > 40 | GPT7 > 42)) |
-        ((FALCALIA > 280 | GAMGTA > 50) & (GOTA > 40 | GPTA > 42))
+    Lesion_mixta = case_when(
+      TIPO_SN_Grupo %in% c(2, 4) ~
+        ((FALCALIA > 280 | GAMGTA > 50) & (GOTA > 40 | GPTA > 42)) |
+        ((FALCALIA > 280 | GAMGTA > 50) & (GOTA > 40 | GPTA > 42)),
+      TRUE ~ ((FALCALIA > 280 | GAMGTA > 50) & (GOTA > 40 | GPTA > 42))
     ),
     
-    # 4. Presencia de disfunción hepática
-    DHANP = as.numeric(colestasis == 1 | necrosis == 1 | lesion_mixta == 1)
-  )
-
-# Cálculo del porcentaje
-indic_12 <- datos_NP %>%
+    DHANP = if_else(Colestasis | Necrosis | Lesion_mixta, 1, 0)
+  ) %>%
+  
+  # 3. Cálculo del porcentaje y los IC
   summarise(
-    n = n(),
-    x = sum(DHANP == 1, na.rm = TRUE),
-    porcentaje = (x / n) * 100
+    Indicador = "12. DHANP",
+    Numerador = sum(DHANP == 1, na.rm = TRUE),
+    Denominador = n(),
+    `Resultado (%)` = round((Numerador / Denominador) * 100, 2),
+    `IC 95% (inf – sup)` = 
+      sprintf("(%.2f – %.2f)", 
+              prop.test(Numerador, Denominador, 0.2)$conf.int[1] * 100, 
+              prop.test(Numerador, Denominador, 0.2)$conf.int[2] * 100),
+    Estándar = "<20%"
   )
 
-# Intervalo de confianza
-IC_12 <- prop.test(indic_12$x, indic_12$n, p = 0.2, alternative = "greater")
-round(IC_12$conf.int * 100, 2)
-
-# Valor p
-IC_12$p.value
+# DHANP por diagnóstico
+tipo_dhanp <- datos %>%
+  # 1. Filtrado de pacientes que reciben NPT durante al menos 7 días
+  filter(TOTALNPT22 >= 7) %>%
+  
+  # 2. Pacientes con disfunción hepática según grupo
+  mutate(
+    Colestasis = case_when(
+      TIPO_SN_Grupo %in% c(2, 4) ~ 
+        (FALCALI7 > 280 | GAMGT7 > 50 | FILIRUB7 > 1.2 |
+           FALCALIA > 280 | GAMGTA > 50 | FILIRUBA > 1.2),
+      TRUE ~ (FALCALIA > 280 | GAMGTA > 50 | FILIRUBA > 1.2)
+    ),
+    
+    Necrosis = case_when(
+      TIPO_SN_Grupo %in% c(2, 4) ~
+        ((GOT7 > 40 | GPT7 > 42) & (FILIRUB7 > 1.2 | INR7 > 1.4)) |
+        ((GOTA > 40 | GPTA > 42) & (FILIRUBA > 1.2 | INRA > 1.4)),
+      TRUE ~ ((GOTA > 40 | GPTA > 42) & (FILIRUBA > 1.2 | INRA > 1.4))
+    ),
+    
+    Lesion_mixta = case_when(
+      TIPO_SN_Grupo %in% c(2, 4) ~
+        ((FALCALIA > 280 | GAMGTA > 50) & (GOTA > 40 | GPTA > 42)) |
+        ((FALCALIA > 280 | GAMGTA > 50) & (GOTA > 40 | GPTA > 42)),
+      TRUE ~ ((FALCALIA > 280 | GAMGTA > 50) & (GOTA > 40 | GPTA > 42))
+    ),
+    
+    DHANP = if_else(Colestasis | Necrosis | Lesion_mixta, 1, 0)
+  ) %>%
+  
+  summarise(
+   Colestasis = mean(Colestasis, na.rm = TRUE) * 100,
+   Necrosis = mean(Necrosis, na.rm = TRUE) * 100,
+   Mixta = mean(Lesion_mixta, na.rm = TRUE) * 100
+  )
 
 
 # ---- Tabla resumen ----
 
 # Tabla de indicadores
-tabla_indicadores <- bind_rows(resumen_i1, resumen_i2)
-
-kable(tabla_indicadores)
+tabla_indicadores <- bind_rows(resumen_i1, resumen_i2, resumen_i4, resumen_i6,
+                               resumen_i7, resumen_i8, resumen_i12)
