@@ -44,6 +44,7 @@ library(lubridate)
 library(knitr)
 library(tidyr)
 library(ggplot2)
+library(viridis)
 
 
 # ---- Preparación de los datos ----
@@ -366,7 +367,217 @@ resumen_i8 <- datos %>%
 
 ## Monitorización de la nutrición enteral
 
-[Pendent]
+La monitorización de la NE es correcta en 101 de los 444 que reciben NE (22,75%, IC 18,99-26,99). En el gráfico se muestran los porcentajes de cumplimiento para cada uno de los controles.
+
+```{r}
+# ---- I9. Monitorización de la NE ----
+
+resumen_i9 <- datos %>%
+  # 1. Filtrado de pacientes con NE
+  filter(!is.na(FINICNE2)) %>%
+  
+  # 2. Registro de complicaciones
+  mutate(
+    Reg_comp = if_else(
+      !is.na(PVRGM100) & !is.na(PDANE) & !is.na(PCLOSTDIF) & 
+        !is.na(PVOMITO) & !is.na(PBRONCOAS) & !is.na(PISQUINT), 
+      1, 0, missing = 0
+    )
+  ) %>%
+  
+  # 3. Cumplimiento de controles
+  mutate(
+    # Triglicéridos
+    Reg_trig = case_when(
+      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 >= 14 ~ 
+        !is.na(TRIGLI7) & !is.na(TRIGLIA),
+      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 < 14 ~ 
+        !is.na(TRIGLI7) | !is.na(TRIGLIA),
+      TRUE ~ !is.na(TRIGLIA)
+    ),
+    
+    # Colesterol
+    Reg_col = case_when(
+      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 >= 14 ~ 
+        !is.na(COLESTER7) & !is.na(COLESTERA),
+      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 < 14 ~ 
+        !is.na(COLESTER7) | !is.na(COLESTERA),
+      TRUE ~ !is.na(COLESTERA)
+    ),
+    
+    # Albúmina
+    Reg_alb = case_when(
+      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 >= 14 ~ 
+        !is.na(ALBUMIN7) & !is.na(ALBUMINAA),
+      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 < 14 ~ 
+        !is.na(ALBUMIN7) | !is.na(ALBUMINAA),
+      TRUE ~ !is.na(ALBUMINAA)
+    ),
+    
+    # Prealbúmina
+    Reg_prealb = case_when(
+      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 >= 14 ~ 
+        !is.na(PREALBU7) & !is.na(PREALBUA),
+      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 < 14 ~ 
+        !is.na(PREALBU7) | !is.na(PREALBUA),
+      TRUE ~ !is.na(PREALBUA)
+    ),
+    
+    # Perfil hepático
+    Reg_perf = case_when(
+      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 >= 14 ~
+        !is.na(FALCALI7) & !is.na(FILIRUB7) & !is.na(GAMGT7) &
+        !is.na(GOT7) & !is.na(GPT7) & !is.na(PROTT7) &
+        !is.na(FALCALIA) & !is.na(FILIRUBA) & !is.na(GAMGTA) &
+        !is.na(GOTA) & !is.na(GPTA) & !is.na(PROTTA),
+      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 < 14 ~ 
+        (!is.na(FALCALI7) & !is.na(FILIRUB7) & !is.na(GAMGT7) &
+           !is.na(GOT7) & !is.na(GPT7) & !is.na(PROTT7)) |
+        (!is.na(FALCALIA) & !is.na(FILIRUBA) & !is.na(GAMGTA) &
+           !is.na(GOTA) & !is.na(GPTA) & !is.na(PROTTA)),
+      TRUE ~
+        !is.na(FALCALIA) & !is.na(FILIRUBA) & !is.na(GAMGTA) &
+        !is.na(GOTA) & !is.na(GPTA) & !is.na(PROTTA)
+    )
+  ) %>%
+  
+  # 4. Resumen de la monitorización
+  mutate(
+    Monitorizacion = if_else(
+      Reg_comp == 1 & Reg_trig  & Reg_col  & Reg_alb  & Reg_prealb  & Reg_perf,
+      1, 0, missing = 0
+    )
+  ) %>%
+  
+  # 5. Cálculo del porcentaje y los IC
+  summarise(
+    Indicador = "9. Monitorización NE",
+    Numerador = sum(Monitorizacion == 1),
+    Denominador = n(),
+    `Resultado (%)` = round((Numerador / Denominador) * 100, 2),
+    `IC 95% (inf – sup)` = 
+      sprintf("(%.2f – %.2f)", 
+              prop.test(Numerador, Denominador, 0.9)$conf.int[1] * 100, 
+              prop.test(Numerador, Denominador, 0.9)$conf.int[2] * 100),
+    Estándar = "100%"
+  )
+```
+
+```{r}
+# Cálculo de porcentajes por control
+datos_monitorizacion <- datos %>%
+  # 1. Filtrado de pacientes con NE
+  filter(!is.na(FINICNE2)) %>%
+  
+  # 2. Registro de complicaciones
+  mutate(
+    Reg_comp = if_else(
+      !is.na(PVRGM100) & !is.na(PDANE) & !is.na(PCLOSTDIF) & 
+        !is.na(PVOMITO) & !is.na(PBRONCOAS) & !is.na(PISQUINT), 
+      1, 0, missing = 0
+    )
+  ) %>%
+  
+  # 3. Cumplimiento de controles
+  mutate(
+    # Triglicéridos
+    Reg_trig = case_when(
+      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 >= 14 ~ 
+        !is.na(TRIGLI7) & !is.na(TRIGLIA),
+      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 < 14 ~ 
+        !is.na(TRIGLI7) | !is.na(TRIGLIA),
+      TRUE ~ !is.na(TRIGLIA)
+    ),
+    
+    # Colesterol
+    Reg_col = case_when(
+      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 >= 14 ~ 
+        !is.na(COLESTER7) & !is.na(COLESTERA),
+      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 < 14 ~ 
+        !is.na(COLESTER7) | !is.na(COLESTERA),
+      TRUE ~ !is.na(COLESTERA)
+    ),
+    
+    # Albúmina
+    Reg_alb = case_when(
+      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 >= 14 ~ 
+        !is.na(ALBUMIN7) & !is.na(ALBUMINAA),
+      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 < 14 ~ 
+        !is.na(ALBUMIN7) | !is.na(ALBUMINAA),
+      TRUE ~ !is.na(ALBUMINAA)
+    ),
+    
+    # Prealbúmina
+    Reg_prealb = case_when(
+      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 >= 14 ~ 
+        !is.na(PREALBU7) & !is.na(PREALBUA),
+      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 < 14 ~ 
+        !is.na(PREALBU7) | !is.na(PREALBUA),
+      TRUE ~ !is.na(PREALBUA)
+    ),
+    
+    # Perfil hepático
+    Reg_perf = case_when(
+      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 >= 14 ~
+        !is.na(FALCALI7) & !is.na(FILIRUB7) & !is.na(GAMGT7) &
+        !is.na(GOT7) & !is.na(GPT7) & !is.na(PROTT7) &
+        !is.na(FALCALIA) & !is.na(FILIRUBA) & !is.na(GAMGTA) &
+        !is.na(GOTA) & !is.na(GPTA) & !is.na(PROTTA),
+      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 < 14 ~ 
+        (!is.na(FALCALI7) & !is.na(FILIRUB7) & !is.na(GAMGT7) &
+           !is.na(GOT7) & !is.na(GPT7) & !is.na(PROTT7)) |
+        (!is.na(FALCALIA) & !is.na(FILIRUBA) & !is.na(GAMGTA) &
+           !is.na(GOTA) & !is.na(GPTA) & !is.na(PROTTA)),
+      TRUE ~
+        !is.na(FALCALIA) & !is.na(FILIRUBA) & !is.na(GAMGTA) &
+        !is.na(GOTA) & !is.na(GPTA) & !is.na(PROTTA)
+    )
+  ) %>%
+  
+  # 4. Resumen de la monitorización
+  mutate(
+    Monitorizacion = if_else(
+      Reg_comp == 1 & Reg_trig  & Reg_col  & Reg_alb  & Reg_prealb  & Reg_perf,
+      1, 0, missing = 0
+    )
+  ) %>%
+  
+  # 5. Datos para el gráfico
+  summarise(
+    Complicaciones = mean(Reg_comp, na.rm = TRUE) * 100,
+    Triglicéridos = mean(Reg_trig, na.rm = TRUE) * 100,
+    Colesterol = mean(Reg_col, na.rm = TRUE) * 100,
+    Albúmina = mean(Reg_alb, na.rm = TRUE) * 100,
+    Prealbúmina = mean(Reg_prealb, na.rm = TRUE) * 100,
+    `Perfil hepático` = mean(Reg_perf, na.rm = TRUE) * 100
+  ) %>%
+  
+  pivot_longer(
+    cols = everything(), names_to = "Control", values_to = "Porcentaje"
+  )
+
+# Gráfico de barras
+ggplot(datos_monitorizacion, aes(x = reorder(Control, Porcentaje), 
+                                 y = Porcentaje,
+                                 fill = Porcentaje)) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  scale_fill_viridis(option = "viridis") +
+  coord_flip() +
+  labs(
+    title = "Monitorización de la NE",
+    subtitle = "Cumplimiento por caso",
+    x = NULL,
+    y = "% de cumplimiento"
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold")
+  ) +
+  geom_text(aes(label = paste0(round(Porcentaje, 2), "%")),
+            hjust = -0.2, size = 3.5, fontface = "bold") +
+  ylim(0, 115)
+```
 
 ## Definición Disfunción Hepática Asociada a la Nutrición Parenteral (DHANP)
 
@@ -467,7 +678,7 @@ kable(tipo_dhanp)
 
 # Tabla de indicadores
 tabla_indicadores <- bind_rows(resumen_i1, resumen_i2, resumen_i4, resumen_i6,
-                               resumen_i7, resumen_i8, resumen_i12)
+                               resumen_i7, resumen_i8, resumen_i9, resumen_i12)
 
 kable(tabla_indicadores)
 ```
