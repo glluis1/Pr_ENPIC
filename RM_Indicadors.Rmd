@@ -42,6 +42,9 @@ if (!require("haven")) {
 if (!require("ggVennDiagram")) {
   install.packages("ggVennDiagram")
 }
+if (!require("viridisLite")) {
+  install.packages("viridisLite")
+}
 
 library(haven)
 library(dplyr)
@@ -50,6 +53,7 @@ library(knitr)
 library(tidyr)
 library(ggplot2)
 library(ggVennDiagram)
+library(viridisLite)
 
 ```
 
@@ -104,7 +108,7 @@ plot_nutric <- datos %>%
   mutate(Riesgo = if_else(NUTRIC_Score >= 5, "Alto", "Bajo")) %>%
   
   ggplot(aes(x = as.factor(NUTRIC_Score), fill = Riesgo)) +
-  geom_bar(alpha = 0.6) +
+  geom_bar(alpha = 0.8) +
   scale_fill_viridis_d() +
   labs(
     title = "Distribución de puntuaciones de NUTRIC Score",
@@ -393,17 +397,17 @@ progresion_aporte <- function(datos, categoria) {
   # Gráfico de progresión temporal
   plot_out <- ggplot(datos, aes(x = Día, y = Mediana)) +
     # 1. Sombreado del RIQ
-    geom_ribbon(aes(ymin = P25, ymax = P75), fill = "#21918C", alpha = 0.2) +
+    geom_ribbon(aes(ymin = P25, ymax = P75), fill = viridis(5)[3], alpha = 0.2) +
     
     # 2. Línea de tendencia principal y puntos
-    geom_line(color = "#3B528B", size = 1.2) +
-    geom_point(color = "#3B528B", size = 3) +
+    geom_line(color = viridis(5)[2], size = 1.2) +
+    geom_point(color = viridis(5)[2], size = 3) +
     
     # 3. Líneas de objetivo
     annotate("segment", x = 1, xend = 3, y = fase_aguda, yend = fase_aguda,
-             linetype = "dashed", color = "#440154", size = 0.8) +
+             linetype = "dashed", color = viridis(5)[1], size = 0.8) +
     annotate("segment", x = 4, xend = 14, y = fase_estable, yend = fase_estable,
-             linetype = "dashed", color = "#5EC962", size = 0.8) +
+             linetype = "dashed", color = viridis(5)[4], size = 0.8) +
     
     # 4. Estética
     scale_color_viridis_c(guide = "none") +
@@ -427,9 +431,9 @@ progresion_aporte <- function(datos, categoria) {
     
     # 6. Anotaciones
     annotate("text", x = 2.5, y = fase_aguda * 0.8, label = "Fase aguda", 
-             color = "#440154", fontface = "bold", size = 3) +
+             color = viridis(5)[1], fontface = "bold", size = 3) +
     annotate("text", x = 9, y = fase_estable * 1.2, label = "Fase estable", 
-             color = "#5EC962", fontface = "bold", size = 3)
+             color = viridis(5)[4], fontface = "bold", size = 3)
   
   return(plot_out)
 }
@@ -497,7 +501,7 @@ plot_cumplimiento <- datos %>%
   filter(!is.na(Porcentaje)) %>%
   
   ggplot(aes(x = Indicador, y = Porcentaje, fill = Indicador)) +
-  geom_boxplot(alpha = 0.6) +
+  geom_boxplot(alpha = 0.8) +
   scale_fill_viridis_d(option = "viridis") +
   labs(title = "Distribución del aporte nutricional en fase estable",
        y = "% de días en rango por paciente",
@@ -831,20 +835,79 @@ tabla_dhanp <- datos_dhanp %>%
 
 tabla_dhanp
 
-plot_dhanp <- list(
+# Diagrama de Venn
+plot_dhanp_venn <- list(
   Colestasis = which(datos_dhanp$Colestasis == TRUE),
   Necrosis = which(datos_dhanp$Necrosis == TRUE),
   `Lesión mixta` = which(datos_dhanp$Mixta == TRUE)
 ) %>%
   
-  ggVennDiagram(label_alpha = 0, edge_size = 0.8) +
-  scale_fill_distiller(palette = "viridis", direction = 1) +
+  ggVennDiagram(
+    category.names = c("Colestasis", "Necrosis", "Lesión mixta"),
+    label_alpha = 0, 
+    edge_size = 0.8
+  ) +
+  aes(alpha = 0.8) +
+  scale_fill_viridis_c(begin = 0, end = 1, direction = -1) +
   labs(title = "Criterios de DHANP") +
-  theme(legend.position = "bottom")
+  theme_minimal() +
+  theme(
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold"),
+    legend.position = "none"
+  ) +
+  coord_sf(clip = "off")
 
-plot_dhanp
+plot_dhanp_venn
 
 # ¿Qué pasa con los valores faltantes?
+
+```
+
+```{r}
+# Gráfico de distribuciones
+umbrales_dhanp <- data.frame(
+  Biomarcador = c("FALCALI7", "FALCALIA", "GAMGT7", "GAMGTA", "FILIRUB7", 
+                  "FILIRUBA", "GOT7", "GOTA", "GPT7", "GPTA", "INR7", "INRA"),
+  Corte = c(280, 280, 50, 50, 1.2, 1.2, 40, 40, 42, 42, 1.4, 1.4)
+)
+
+plot_dhanp_dist <- datos_dhanp %>%
+  select(DHANP, FALCALI7, FALCALIA, GAMGT7, GAMGTA, FILIRUB7, FILIRUBA,
+         GOT7, GOTA, GPT7, GPTA, INR7, INRA) %>%
+  pivot_longer(
+    cols = -DHANP,
+    names_to = "Biomarcador",
+    values_to = "Valor"
+  )%>%
+  filter(!is.na(Valor)) %>%
+  
+  ggplot(aes(x = as.factor(DHANP), y = Valor, fill = as.factor(DHANP))) +
+  geom_boxplot(alpha = 0.8, outlier.shape = NA) +
+  geom_jitter(width = 0.15, alpha = 0.3, size = 1) +
+  
+  geom_hline(data = umbrales_dhanp, aes(yintercept = Corte),
+             linetype = "dashed", color = viridis(3)[2], size = 0.7) +
+  
+  facet_wrap(~ Biomarcador, scales = "free") +
+  scale_y_log10() +
+  scale_fill_viridis_d() +
+  labs(
+    title = "Distribución de biomarcadores vs. criterios diagnósticos",
+    subtitle = "Eje y en escala logarítmica",
+    x = "DHANP",
+    y = "Valor",
+    fill = "DHANP"
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold"),
+    legend.position = "bottom",
+    strip.text = element_text(face = "bold")
+  )
+
+plot_dhanp_dist
 
 ```
 

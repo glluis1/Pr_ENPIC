@@ -5,6 +5,9 @@ if (!require("haven")) {
 if (!require("ggVennDiagram")) {
   install.packages("ggVennDiagram")
 }
+if (!require("viridisLite")) {
+  install.packages("viridisLite")
+}
 
 library(haven)
 library(dplyr)
@@ -13,6 +16,7 @@ library(knitr)
 library(tidyr)
 library(ggplot2)
 library(ggVennDiagram)
+library(viridisLite)
 
 
 # ---- Preparación de los datos ----
