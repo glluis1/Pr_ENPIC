@@ -32,12 +32,15 @@ Sys.setlocale("LC_TIME", "C")
 
 # Resultados
 
-Los resultados de los indicadores se presentan como porcentajes y intervalos de confianza (IC) al 95%. Cuando el estándar de referencia es el 100%, no tiene sentido realizar contrastes de hipótesis porque, al comparar con el objetivo ideal, siempre se obtendrá significación. En caso contrario, se indicará también el valor p. Se considera que existe significación estadística si p \< 0,05.
+Los resultados de los indicadores se presentan como porcentajes y intervalos de confianza (IC) al 95%. Cuando el estándar de referencia es el 100%, no tiene sentido realizar contrastes de hipótesis porque, al comparar con el objetivo ideal, siempre se obtendrá significación. En caso contrario, se indicará también el valor $p$. Se considera que existe significación estadística si $p < 0,05$.
 
 ```{r}
 # ---- Instalación de paquetes ----
 if (!require("haven")) {
   install.packages("haven")
+}
+if (!require("ggVennDiagram")) {
+  install.packages("ggVennDiagram")
 }
 
 library(haven)
@@ -46,6 +49,7 @@ library(lubridate)
 library(knitr)
 library(tidyr)
 library(ggplot2)
+library(ggVennDiagram)
 
 ```
 
@@ -108,7 +112,11 @@ plot_nutric <- datos %>%
     y = "Número de casos"
   ) +
   theme_minimal() +
-  theme(legend.position = "bottom")
+  theme(
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold"),
+    legend.position = "bottom"
+  )
 
 plot_nutric
 
@@ -403,6 +411,10 @@ progresion_aporte <- function(datos, categoria) {
     scale_x_continuous(breaks = 1:14) +
     scale_y_continuous(limits = c(0, max(datos$P75) * 1.1)) +
     theme_minimal() +
+    theme(
+      panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold")
+    ) +
     
     # 5. Texto y etiquetas
     labs(
@@ -491,7 +503,11 @@ plot_cumplimiento <- datos %>%
        y = "% de días en rango por paciente",
        x = "") +
   theme_minimal() +
-  theme(legend.position = "none")
+  theme(
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold"),
+    legend.position = "none"
+  )
 
 plot_cumplimiento
 
@@ -597,100 +613,6 @@ La monitorización de la NE es correcta en 101 de los 444 que reciben NE (22,75%
 ```{r}
 # ---- I9. Monitorización de la NE ----
 
-resumen_i9 <- datos %>%
-  # 1. Filtrado de pacientes con NE
-  filter(!is.na(FINICNE2)) %>%
-  
-  # 2. Registro de complicaciones
-  mutate(
-    Reg_comp = if_else(
-      !is.na(PVRGM100) & !is.na(PDANE) & !is.na(PCLOSTDIF) & 
-        !is.na(PVOMITO) & !is.na(PBRONCOAS) & !is.na(PISQUINT), 
-      1, 0, missing = 0
-    )
-  ) %>%
-  
-  # 3. Cumplimiento de controles
-  mutate(
-    # Triglicéridos
-    Reg_trig = case_when(
-      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 >= 14 ~ 
-        !is.na(TRIGLI7) & !is.na(TRIGLIA),
-      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 < 14 ~ 
-        !is.na(TRIGLI7) | !is.na(TRIGLIA),
-      TRUE ~ !is.na(TRIGLIA)
-    ),
-    
-    # Colesterol
-    Reg_col = case_when(
-      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 >= 14 ~ 
-        !is.na(COLESTER7) & !is.na(COLESTERA),
-      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 < 14 ~ 
-        !is.na(COLESTER7) | !is.na(COLESTERA),
-      TRUE ~ !is.na(COLESTERA)
-    ),
-    
-    # Albúmina
-    Reg_alb = case_when(
-      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 >= 14 ~ 
-        !is.na(ALBUMIN7) & !is.na(ALBUMINAA),
-      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 < 14 ~ 
-        !is.na(ALBUMIN7) | !is.na(ALBUMINAA),
-      TRUE ~ !is.na(ALBUMINAA)
-    ),
-    
-    # Prealbúmina
-    Reg_prealb = case_when(
-      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 >= 14 ~ 
-        !is.na(PREALBU7) & !is.na(PREALBUA),
-      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 < 14 ~ 
-        !is.na(PREALBU7) | !is.na(PREALBUA),
-      TRUE ~ !is.na(PREALBUA)
-    ),
-    
-    # Perfil hepático
-    Reg_perf = case_when(
-      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 >= 14 ~
-        !is.na(FALCALI7) & !is.na(FILIRUB7) & !is.na(GAMGT7) &
-        !is.na(GOT7) & !is.na(GPT7) & !is.na(PROTT7) &
-        !is.na(FALCALIA) & !is.na(FILIRUBA) & !is.na(GAMGTA) &
-        !is.na(GOTA) & !is.na(GPTA) & !is.na(PROTTA),
-      TIPO_SN_Grupo %in% c(1, 3) & TOTALNE2 < 14 ~ 
-        (!is.na(FALCALI7) & !is.na(FILIRUB7) & !is.na(GAMGT7) &
-           !is.na(GOT7) & !is.na(GPT7) & !is.na(PROTT7)) |
-        (!is.na(FALCALIA) & !is.na(FILIRUBA) & !is.na(GAMGTA) &
-           !is.na(GOTA) & !is.na(GPTA) & !is.na(PROTTA)),
-      TRUE ~
-        !is.na(FALCALIA) & !is.na(FILIRUBA) & !is.na(GAMGTA) &
-        !is.na(GOTA) & !is.na(GPTA) & !is.na(PROTTA)
-    )
-  ) %>%
-  
-  # 4. Resumen de la monitorización
-  mutate(
-    Monitorizacion = if_else(
-      Reg_comp == 1 & Reg_trig  & Reg_col  & Reg_alb  & Reg_prealb  & Reg_perf,
-      1, 0, missing = 0
-    )
-  ) %>%
-  
-  # 5. Cálculo del porcentaje y los IC
-  summarise(
-    Indicador = "9. Monitorización NE",
-    Numerador = sum(Monitorizacion == 1),
-    Denominador = n(),
-    `Resultado (%)` = round((Numerador / Denominador) * 100, 2),
-    `IC 95% (inf – sup)` = 
-      sprintf("(%.2f – %.2f)", 
-              prop.test(Numerador, Denominador)$conf.int[1] * 100, 
-              prop.test(Numerador, Denominador)$conf.int[2] * 100),
-    Estándar = "100%"
-  )
-
-```
-
-```{r}
-# Cálculo de porcentajes por control
 datos_monitorizacion <- datos %>%
   # 1. Filtrado de pacientes con NE
   filter(!is.na(FINICNE2)) %>%
@@ -766,9 +688,28 @@ datos_monitorizacion <- datos %>%
       Reg_comp == 1 & Reg_trig  & Reg_col  & Reg_alb  & Reg_prealb  & Reg_perf,
       1, 0, missing = 0
     )
-  ) %>%
-  
-  # 5. Datos para el gráfico
+  )
+
+# Cálculo del porcentaje y los IC
+resumen_i9 <- datos_monitorizacion %>%
+  summarise(
+    Indicador = "9. Monitorización NE",
+    Numerador = sum(Monitorizacion == 1),
+    Denominador = n(),
+    `Resultado (%)` = round((Numerador / Denominador) * 100, 2),
+    `IC 95% (inf – sup)` = 
+      sprintf("(%.2f – %.2f)", 
+              prop.test(Numerador, Denominador)$conf.int[1] * 100, 
+              prop.test(Numerador, Denominador)$conf.int[2] * 100),
+    Estándar = "100%"
+  )
+
+```
+
+```{r}
+# Cálculo de porcentajes por control
+plot_monitorizacion <- datos_monitorizacion %>%
+  # Tabla de porcentajes
   summarise(
     Complicaciones = mean(Reg_comp, na.rm = TRUE) * 100,
     Triglicéridos = mean(Reg_trig, na.rm = TRUE) * 100,
@@ -780,10 +721,10 @@ datos_monitorizacion <- datos %>%
   
   pivot_longer(
     cols = everything(), names_to = "Control", values_to = "Porcentaje"
-  )
-
-# Gráfico de barras
-ggplot(datos_monitorizacion, aes(x = reorder(Control, Porcentaje), 
+  ) %>%
+  
+  # Gráfico de barras
+  ggplot(aes(x = reorder(Control, Porcentaje), 
                                  y = Porcentaje,
                                  fill = Porcentaje)) +
   geom_bar(stat = "identity", show.legend = FALSE) +
@@ -804,6 +745,8 @@ ggplot(datos_monitorizacion, aes(x = reorder(Control, Porcentaje),
             hjust = -0.2, size = 3.5, fontface = "bold") +
   ylim(0, 115)
 
+plot_monitorizacion
+
 # Pacientes con NE o NE-NPT y >=14 días de NE: 2 controles (día 7 y alta)
 # Pacientes con NE o NE-NPT y <14 días de NE: 1 control (día 7 o alta)
 # Pacientes con NPT-NE: 1 control (alta)
@@ -817,7 +760,7 @@ De los 101 pacientes que pasan más de 7 días con NP, 76 (75,2%, IC 65,48-83,06
 ```{r}
 # ---- I12. Disfunción hepática asociada a la NP ----
 
-resumen_i12 <- datos %>%
+datos_dhanp <- datos %>%
   # 1. Filtrado de pacientes que reciben NPT durante al menos 7 días
   filter(TOTALNPT22 >= 7) %>%
   
@@ -837,17 +780,18 @@ resumen_i12 <- datos %>%
       TRUE ~ ((GOTA > 40 | GPTA > 42) & (FILIRUBA > 1.2 | INRA > 1.4))
     ),
     
-    Lesion_mixta = case_when(
+    Mixta = case_when(
       TIPO_SN_Grupo %in% c(2, 4) ~
         ((FALCALIA > 280 | GAMGTA > 50) & (GOTA > 40 | GPTA > 42)) |
         ((FALCALIA > 280 | GAMGTA > 50) & (GOTA > 40 | GPTA > 42)),
       TRUE ~ ((FALCALIA > 280 | GAMGTA > 50) & (GOTA > 40 | GPTA > 42))
     ),
     
-    DHANP = if_else(Colestasis | Necrosis | Lesion_mixta, 1, 0)
-  ) %>%
+    DHANP = if_else(Colestasis | Necrosis | Mixta, 1, 0)
+  )
   
-  # 3. Cálculo del porcentaje y los IC
+# Cálculo del porcentaje y los IC
+resumen_i12 <- datos_dhanp %>%
   summarise(
     Indicador = "12. DHANP",
     Numerador = sum(DHANP == 1, na.rm = TRUE),
@@ -864,43 +808,43 @@ resumen_i12 <- datos %>%
 
 ```{r}
 # DHANP por diagnóstico
-tipo_dhanp <- datos %>%
-  # 1. Filtrado de pacientes que reciben NPT durante al menos 7 días
-  filter(TOTALNPT22 >= 7) %>%
-  
-  # 2. Pacientes con disfunción hepática según grupo
-  mutate(
-    Colestasis = case_when(
-      TIPO_SN_Grupo %in% c(2, 4) ~ 
-        (FALCALI7 > 280 | GAMGT7 > 50 | FILIRUB7 > 1.2 |
-           FALCALIA > 280 | GAMGTA > 50 | FILIRUBA > 1.2),
-      TRUE ~ (FALCALIA > 280 | GAMGTA > 50 | FILIRUBA > 1.2)
-    ),
-    
-    Necrosis = case_when(
-      TIPO_SN_Grupo %in% c(2, 4) ~
-        ((GOT7 > 40 | GPT7 > 42) & (FILIRUB7 > 1.2 | INR7 > 1.4)) |
-        ((GOTA > 40 | GPTA > 42) & (FILIRUBA > 1.2 | INRA > 1.4)),
-      TRUE ~ ((GOTA > 40 | GPTA > 42) & (FILIRUBA > 1.2 | INRA > 1.4))
-    ),
-    
-    Lesion_mixta = case_when(
-      TIPO_SN_Grupo %in% c(2, 4) ~
-        ((FALCALIA > 280 | GAMGTA > 50) & (GOTA > 40 | GPTA > 42)) |
-        ((FALCALIA > 280 | GAMGTA > 50) & (GOTA > 40 | GPTA > 42)),
-      TRUE ~ ((FALCALIA > 280 | GAMGTA > 50) & (GOTA > 40 | GPTA > 42))
-    ),
-    
-    DHANP = if_else(Colestasis | Necrosis | Lesion_mixta, 1, 0)
+tabla_dhanp <- datos_dhanp %>%
+  summarise(
+    across(c(Colestasis, Necrosis, Mixta),
+           list(
+             Recuento = ~ sum(.x == TRUE, na.rm = TRUE),
+             Porcentaje = ~ round(mean(.x == TRUE, na.rm = TRUE) * 100, 2),
+             Faltantes = ~ sum(is.na(.x))
+           ))
+  ) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = c("Categoría", ".value"),
+    names_sep = "_"
   ) %>%
   
-  summarise(
-   Colestasis = round(mean(Colestasis, na.rm = TRUE) * 100, 2),
-   Necrosis = round(mean(Necrosis, na.rm = TRUE) * 100, 2),
-   Mixta = round(mean(Lesion_mixta, na.rm = TRUE) * 100, 2)
+  kable(
+    col.names = c("Criterio diagnóstico", "Recuento", 
+                  "Porcentaje (%)", "Valores faltantes (NA)"),
+    caption = "Tabla de frecuencias de DHANP"
   )
 
-kable(tipo_dhanp)
+tabla_dhanp
+
+plot_dhanp <- list(
+  Colestasis = which(datos_dhanp$Colestasis == TRUE),
+  Necrosis = which(datos_dhanp$Necrosis == TRUE),
+  `Lesión mixta` = which(datos_dhanp$Mixta == TRUE)
+) %>%
+  
+  ggVennDiagram(label_alpha = 0, edge_size = 0.8) +
+  scale_fill_distiller(palette = "viridis", direction = 1) +
+  labs(title = "Criterios de DHANP") +
+  theme(legend.position = "bottom")
+
+plot_dhanp
+
+# ¿Qué pasa con los valores faltantes?
 
 ```
 
@@ -912,6 +856,7 @@ kable(tipo_dhanp)
 # Tabla de indicadores
 tabla_indicadores <- bind_rows(resumen_i1, resumen_i2, resumen_i4, resumen_i6,
                                resumen_i7, resumen_i8, resumen_i9, resumen_i12)
+rm(list = ls(pattern = "^resumen"))
 
 kable(tabla_indicadores)
 

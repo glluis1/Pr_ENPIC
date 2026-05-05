@@ -2,6 +2,9 @@
 if (!require("haven")) {
   install.packages("haven")
 }
+if (!require("ggVennDiagram")) {
+  install.packages("ggVennDiagram")
+}
 
 library(haven)
 library(dplyr)
@@ -9,6 +12,7 @@ library(lubridate)
 library(knitr)
 library(tidyr)
 library(ggplot2)
+library(ggVennDiagram)
 
 
 # ---- Preparación de los datos ----
