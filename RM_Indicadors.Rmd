@@ -32,7 +32,7 @@ Sys.setlocale("LC_TIME", "C")
 
 # Resultados
 
-Los resultados de los indicadores se presentan como porcentajes y intervalos de confianza (IC) al 95%. Cuando el estándar de referencia es el 100%, no tiene sentido realizar contrastes de hipótesis porque, al comparar con el objetivo ideal, siempre se obtendrá significación. En caso contrario, se indicará también el valor $p$. Se considera que existe significación estadística si $p < 0,05$.
+Los resultados de los indicadores se presentan como porcentajes e intervalos de confianza (IC) al 95%. Cuando el estándar de referencia es el 100%, no tiene sentido realizar contrastes de hipótesis porque, al comparar con el objetivo ideal, siempre se obtendrá significación. En caso contrario, se indicará también el valor $p$. Se considera que existe significación estadística si $p < 0,05$.
 
 ```{r}
 # ---- Instalación de paquetes ----
@@ -51,6 +51,7 @@ library(dplyr)
 library(lubridate)
 library(knitr)
 library(tidyr)
+library(tidyverse)
 library(ggplot2)
 library(ggVennDiagram)
 library(viridisLite)
@@ -77,7 +78,7 @@ datos$TIPO_SN_Grupo[datos$IDICOMEP == 34007] <- 3
 
 ## Identificación de enfermos en riesgo nutricional (100%)
 
-Todos los pacientes incluidos en el estudio tuvieron una estancia en la UCI superior a 48h. Se valoró el riesgo nutricional con la herramienta NUTRIC Score en 509 de los 525 casos (96,95%, IC 94,99-98,19). Este valor indica una adherencia alta al protocolo.
+Todos los pacientes incluidos en el estudio tuvieron una estancia en la UCI superior a 48h. Se valoró el riesgo nutricional con la herramienta NUTRIC Score en 509 de los 525 casos (96,95%, IC 94,99-98,19). El gráfico muestra la distribución de puntuaciones de la prueba y la categoría de riesgo nutricional.
 
 ```{r}
 # ---- I1. Identificación de enfermos en riesgo nutricional ----
@@ -99,16 +100,13 @@ resumen_i1 <- datos %>%
     Estándar = "100%"
   )
 
-# Distribución del NUTRIC Score
-summary(datos$NUTRIC_Score)
-
 # Gráfico de barras
 plot_nutric <- datos %>%
   filter(!is.na(NUTRIC_Score)) %>%
   mutate(Riesgo = if_else(NUTRIC_Score >= 5, "Alto", "Bajo")) %>%
   
   ggplot(aes(x = as.factor(NUTRIC_Score), fill = Riesgo)) +
-  geom_bar(alpha = 0.8) +
+  geom_bar(alpha = 0.7) +
   scale_fill_viridis_d() +
   labs(
     title = "Distribución de puntuaciones de NUTRIC Score",
@@ -137,7 +135,7 @@ plot_nutric
 
 ## Valoración del estado nutricional (100%)
 
-Se realizó la valoración del EN en 233 de los 233 pacientes con RN (100%, IC 97,98-100). Es necesario tener en cuenta, no obstante, que existen 16 casos en los que no se pudo objetivar el RN mediante el NUTRIC Score y que, por este motivo, no se han incluido en el cálculo.
+Se realizó la valoración del estado nutricional en 233 de los 233 pacientes con riesgo nutricional (100%, IC 97,98-100). Es necesario tener en cuenta, no obstante, que existen 16 casos en los que no se pudo objetivar el riesgo nutricional mediante el NUTRIC Score y que, por este motivo, no se han incluido en el cálculo.
 
 ```{r}
 # ---- I2. Valoración del estado nutricional ----
@@ -163,11 +161,13 @@ resumen_i2 <- datos %>%
 
 ## Adecuación del aporte calórico y proteico del soporte nutricional (>80%)
 
-El cumplimiento de los requerimientos nutricionales en los pacientes que alcanzan el 4º día tras el ingreso en la UCI es bajo: 58 de 508 pacientes para el aporte calórico (11,42%, IC 8,85-14,59) y 117 de 508 para el aporte proteico (23,03%, 19,49-26,99).
+El cumplimiento de los requerimientos nutricionales en los pacientes que alcanzan el 4º día tras el ingreso en la UCI es bajo: 202 de 508 pacientes reciben entre el 80 i el 110% del aporte calórico recomendado (39,76%, IC 35,50-44,18) y 197 de 508 lo cumplen para el aporte proteico (38,78%, 34,55-43,19).
 
-De los pacientes que no cumplen los requerimientos de aporte calórico, 425 no llegan al límite inferior, mientas que 25 superan el límite superior, lo cual indica una tendencia a la hiponutrición (ver Tabla). Se añade también un gráfico con la distribución de días dentro de los rangos teóricos de aporte nutricional.
+De los pacientes que no cumplen los requerimientos de aporte calórico, 136 (26,77%) no llegan al 60% de los valores recomendados, mientras que 155 (30,51%) se sitúan entre el 60 i el 80%. Por la parte superior, 15 pacientes (2,95%) superan el umbral del 110%. En el caso de las proteínas, 152 pacientes (29,92%) no llegan al 60%, 135 (26,57%) se quedan entre el 60 i el 80% i 24 (4,72%) superan el 110% (ver Tablas).
 
-*Fórmulas:* @singer2019
+Los gráficos muestran la progresión del aporte diario y la distribución de días dentro de los rangos teóricos de aporte nutricional.
+
+*Nota*: si el IMC es mayor que 30, se utiliza el peso ajustado para los cálculos. Fórmulas: @singer2019
 
 $$\mathrm{Peso\ ajustado} = (\mathrm{Peso\ actual} - \mathrm{Peso\ ideal}) \cdot 0,33 + \mathrm{Peso\ ideal}$$
 $$\mathrm{Peso\ ideal} = 25 \cdot \mathrm{talla}^2$$
@@ -210,7 +210,7 @@ resumen_i4_cal <- datos %>%
   # 2. Cálculo del porcentaje y los IC
   summarise(
     Indicador = "4a. Aporte calórico",
-    Numerador = sum(Media_cal_estable >= 20 & Media_cal_estable <= 30, 
+    Numerador = sum(Media_cal_estable >= 20 & Media_cal_estable <= (1.1 * 30), 
                     na.rm = TRUE),
     Denominador = n(),
     `Resultado (%)` = round((Numerador / Denominador) * 100, 2),
@@ -229,7 +229,8 @@ resumen_i4_prot <- datos %>%
   # 2. Cálculo del porcentaje y los IC
   summarise(
     Indicador = "4b. Aporte proteico",
-    Numerador = sum(Media_prot_estable >= 0.8 * 1.3, na.rm = TRUE),
+    Numerador = sum(Media_prot_estable >= (0.8 * 1.3) &
+                      Media_prot_estable <= (1.1 * 1.5), na.rm = TRUE),
     Denominador = n(),
     `Resultado (%)` = round((Numerador / Denominador) * 100, 2),
     `IC 95% (inf – sup)` = 
@@ -310,26 +311,34 @@ analisis_error <- function(datos, columna, valor_inf, valor_sup,
     )
   
   return(kable(error,
-               col.names = c("Categoría", "Nº de pacientes", "%"),
+               col.names = c("Categoría", "Recuento", "Porcentaje (%)"),
                caption = paste0(
-                 "Análisis de: **", etiqueta,
-                 "** | Intervalo de referencia: ", intervalo_ref
+                 "**", etiqueta, "** | Intervalo de referencia: ", intervalo_ref
                )))
 }
 
 # Tablas
-analisis_error(datos = datos, columna = Media_cal_aguda,
-               valor_inf = 15, valor_sup = 20,
-               etiqueta = "aporte calórico en fase aguda (kcal/kg/día)")
-analisis_error(datos = datos, columna = Media_cal_estable,
-               valor_inf = 25, valor_sup = 30,
-               etiqueta = "aporte calórico en fase estable (kcal/kg/día)")
-analisis_error(datos = datos, columna = Media_prot_aguda,
-               valor_inf = 0.8, valor_sup = 1.2,
-               etiqueta = "aporte proteico en fase aguda (g/kg/día)")
-analisis_error(datos = datos, columna = Media_prot_estable,
-               valor_inf = 1.3, valor_sup = 1.5,
-               etiqueta = "aporte proteico en fase estable (g/kg/día)")
+tabla_cal_aguda <- analisis_error(
+  datos = datos, columna = Media_cal_aguda, valor_inf = 15, valor_sup = 20,
+  etiqueta = "Aporte calórico en fase aguda (kcal/kg/día)"
+)
+tabla_cal_estable <- analisis_error(
+  datos = datos, columna = Media_cal_estable, valor_inf = 25, valor_sup = 30,
+  etiqueta = "Aporte calórico en fase estable (kcal/kg/día)"
+)
+tabla_prot_aguda <- analisis_error(
+  datos = datos, columna = Media_prot_aguda, valor_inf = 0.8, valor_sup = 1.2,
+  etiqueta = "Aporte proteico en fase aguda (g/kg/día)"
+)
+tabla_prot_estable <- analisis_error(
+  datos = datos, columna = Media_prot_estable, valor_inf = 1.3, valor_sup = 1.5,
+  etiqueta = "Aporte proteico en fase estable (g/kg/día)"
+)
+
+tabla_cal_aguda
+tabla_cal_estable
+tabla_prot_aguda
+tabla_prot_estable
 
 ```
 
@@ -367,6 +376,13 @@ progresion_aporte <- function(datos, categoria) {
   fase_aguda <- if_else(caloria, 12, 0.8 * 0.8)
   fase_estable <- if_else(caloria, 20, 0.8 * 1.3)
   
+  objetivos <- data.frame(
+    x = c(1, 4),
+    xend = c(3, 14),
+    y = c(fase_aguda, fase_estable),
+    Fase = c("Fase aguda", "Fase estable")
+  )
+  
   # Procesamiento de datos
   datos <- datos %>%
     # 1. Selección de categoría
@@ -397,27 +413,30 @@ progresion_aporte <- function(datos, categoria) {
   # Gráfico de progresión temporal
   plot_out <- ggplot(datos, aes(x = Día, y = Mediana)) +
     # 1. Sombreado del RIQ
-    geom_ribbon(aes(ymin = P25, ymax = P75), fill = viridis(5)[3], alpha = 0.2) +
+    geom_ribbon(aes(ymin = P25, ymax = P75), 
+                fill = viridis(3)[2], alpha = 0.1) +
     
     # 2. Línea de tendencia principal y puntos
-    geom_line(color = viridis(5)[2], size = 1.2) +
-    geom_point(color = viridis(5)[2], size = 3) +
+    geom_line(color = viridis(3)[2], size = 1.2) +
+    geom_point(color = viridis(3)[2], size = 3) +
     
     # 3. Líneas de objetivo
-    annotate("segment", x = 1, xend = 3, y = fase_aguda, yend = fase_aguda,
-             linetype = "dashed", color = viridis(5)[1], size = 0.8) +
-    annotate("segment", x = 4, xend = 14, y = fase_estable, yend = fase_estable,
-             linetype = "dashed", color = viridis(5)[4], size = 0.8) +
+    geom_segment(data = objetivos,
+                 aes(x = x, xend = xend, y = y, yend = y, color = Fase),
+                 linetype = "dashed", linewidth = 1) +
     
     # 4. Estética
-    scale_color_viridis_c(guide = "none") +
-    scale_fill_viridis_c(guide = "none") +
+    scale_color_manual(
+      name = "Objetivos nutricionales:",
+      values = c("Fase aguda" = viridis(3)[1], "Fase estable" = "firebrick")
+    ) +
     scale_x_continuous(breaks = 1:14) +
     scale_y_continuous(limits = c(0, max(datos$P75) * 1.1)) +
     theme_minimal() +
     theme(
       panel.grid.minor = element_blank(),
-    plot.title = element_text(face = "bold")
+      plot.title = element_text(face = "bold"),
+      legend.position = "bottom"
     ) +
     
     # 5. Texto y etiquetas
@@ -426,14 +445,8 @@ progresion_aporte <- function(datos, categoria) {
       subtitle = paste0("Mediana de ", unidades, " con rango intercuartílico"),
       x = "Día",
       y = paste0("Aporte (", unidades, ")"),
-      caption = "Las líneas discontinuas marcan los objetivos para cada fase"
-    ) +
-    
-    # 6. Anotaciones
-    annotate("text", x = 2.5, y = fase_aguda * 0.8, label = "Fase aguda", 
-             color = viridis(5)[1], fontface = "bold", size = 3) +
-    annotate("text", x = 9, y = fase_estable * 1.2, label = "Fase estable", 
-             color = viridis(5)[4], fontface = "bold", size = 3)
+      color = "Referencias:"
+    )
   
   return(plot_out)
 }
@@ -501,7 +514,7 @@ plot_cumplimiento <- datos %>%
   filter(!is.na(Porcentaje)) %>%
   
   ggplot(aes(x = Indicador, y = Porcentaje, fill = Indicador)) +
-  geom_boxplot(alpha = 0.8) +
+  geom_boxplot(alpha = 0.7) +
   scale_fill_viridis_d(option = "viridis") +
   labs(title = "Distribución del aporte nutricional en fase estable",
        y = "% de días en rango por paciente",
@@ -524,7 +537,7 @@ plot_cumplimiento
 
 ## Nutrición enteral precoz (100%)
 
-El nivel de adherencia en este caso es notable: 279 de 375 pacientes (74,4%, IC 69,61-78,68) reciben nutrición enteral (NE) durante las primeras 48h de evolución. Aun así, está lejos del estándar, lo cual indica un retraso sistémico en el inicio de la NE.
+El nivel de adherencia en este caso es notable: 279 de 375 pacientes (74,4%, IC 69,61-78,68) reciben nutrición enteral (NE) durante las primeras 48h de evolución.
 
 ```{r}
 # ---- I6. Nutrición enteral precoz ----
@@ -550,7 +563,7 @@ resumen_i6 <- datos %>%
 
 ## Uso adecuado de nutrición parenteral total (>90%)
 
-Existe indicación de nutrición parenteral total (NPT) en 132 de los 193 pacientes (68,4%, IC 61,26-74,78) que reciben NPT. Este resultado también se aleja del estándar de referencia del 90%.
+Existe indicación de nutrición parenteral total (NPT) en 132 de los 193 pacientes (68,4%, IC 61,26-74,78) que reciben NPT.
 
 ```{r}
 # ---- I7. Uso adecuado de NPT ----
@@ -576,7 +589,7 @@ resumen_i7 <- datos %>%
 
 ## Adecuación temporal del inicio de la nutrición parenteral complementaria (>90%)
 
-Solo 10 de 163 pacientes (6,13%, IC 3,15-11,30) que al 4º día no alcanzan al menos el 60% de los requerimientos nutricionales (15 kcal/kg/día y 0,8 g/kg/día) reciben nutrición parenteral complementaria (NPC). El resultado es muy bajo en comparación con el estándar del 90%.
+Solo 10 de 163 pacientes (6,13%, IC 3,15-11,30) que al 4º día no alcanzan al menos el 60% de los requerimientos nutricionales (15 kcal/kg/día y 0,8 g/kg/día) reciben nutrición parenteral complementaria (NPC).
 
 ```{r}
 # ---- I8. Adecuación temporal de la NPC ----
@@ -731,7 +744,7 @@ plot_monitorizacion <- datos_monitorizacion %>%
   ggplot(aes(x = reorder(Control, Porcentaje), 
                                  y = Porcentaje,
                                  fill = Porcentaje)) +
-  geom_bar(stat = "identity", show.legend = FALSE) +
+  geom_bar(alpha = 0.7, stat = "identity", show.legend = FALSE) +
   scale_fill_viridis_c(option = "viridis") +
   coord_flip() +
   labs(
@@ -759,7 +772,9 @@ plot_monitorizacion
 
 ## Definición Disfunción Hepática Asociada a la Nutrición Parenteral (<20%)
 
-De los 101 pacientes que pasan más de 7 días con NP, 76 (75,2%, IC 65,48-83,06) cumplen los criterios de Disfunción Hepática Asociada a la Nutrición Parenteral (DHANP). Es un valor muy elevado en comparación con el estándar de referencia del 20%, debido principalmente a la presencia de colestasis (98,7% de pacientes).
+De los 101 pacientes que pasan más de 7 días con NP, 76 (75,2%, IC 65,48-83,06) cumplen los criterios de Disfunción Hepática Asociada a la Nutrición Parenteral (DHANP). Es un valor muy elevado en comparación con el estándar de referencia, debido principalmente a la presencia de colestasis (98,7% de pacientes).
+
+Se incluye un diagrama de Venn con la relación entre las 3 categorías y un gráfico de cajas que muestra la evolución de cada biomarcador en este subconjunto de pacientes.
 
 ```{r}
 # ---- I12. Disfunción hepática asociada a la NP ----
@@ -826,11 +841,14 @@ tabla_dhanp <- datos_dhanp %>%
     names_to = c("Categoría", ".value"),
     names_sep = "_"
   ) %>%
+  mutate(
+    Categoría = recode(Categoría, "Mixta" = "Lesión mixta")
+  ) %>%
   
   kable(
     col.names = c("Criterio diagnóstico", "Recuento", 
-                  "Porcentaje (%)", "Valores faltantes (NA)"),
-    caption = "Tabla de frecuencias de DHANP"
+                  "Porcentaje (%)", "Valores faltantes"),
+    caption = "**Tabla de frecuencias de DHANP**"
   )
 
 tabla_dhanp
@@ -847,12 +865,18 @@ plot_dhanp_venn <- list(
     label_alpha = 0, 
     edge_size = 0.8
   ) +
-  aes(alpha = 0.8) +
+  aes(alpha = 0.7) +
   scale_fill_viridis_c(begin = 0, end = 1, direction = -1) +
   labs(title = "Criterios de DHANP") +
   theme_minimal() +
   theme(
-    panel.grid.minor = element_blank(),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    panel.grid = element_blank(),
     plot.title = element_text(face = "bold"),
     legend.position = "none"
   ) +
@@ -865,42 +889,67 @@ plot_dhanp_venn
 ```
 
 ```{r}
-# Gráfico de distribuciones
+# Umbrales diagnósticos
 umbrales_dhanp <- data.frame(
-  Biomarcador = c("FALCALI7", "FALCALIA", "GAMGT7", "GAMGTA", "FILIRUB7", 
-                  "FILIRUBA", "GOT7", "GOTA", "GPT7", "GPTA", "INR7", "INRA"),
-  Corte = c(280, 280, 50, 50, 1.2, 1.2, 40, 40, 42, 42, 1.4, 1.4)
+  Biomarcador = c("Fosfatasa alcalina", "GGT", "Bilirubina", 
+                  "GOT (AST)", "GPT (ALT)", "INR"),
+  Corte = c(280, 50, 1.2, 40, 42, 1.4)
 )
 
+# Gráfico de distribuciones
 plot_dhanp_dist <- datos_dhanp %>%
-  select(DHANP, FALCALI7, FALCALIA, GAMGT7, GAMGTA, FILIRUB7, FILIRUBA,
-         GOT7, GOTA, GPT7, GPTA, INR7, INRA) %>%
+  # 1. Selección de columnas
+  select(starts_with(
+    c("FALCALI", "GAMGT", "FILIRUB", "GOT", "GPT", "INR")
+  )) %>%
+  
+  # 2. onversión a formato largo para ggplot
   pivot_longer(
-    cols = -DHANP,
-    names_to = "Biomarcador",
+    cols = everything(),
+    names_to = "Clave",
     values_to = "Valor"
   )%>%
+  
+  # 3. Recodificación
+  mutate(
+    Biomarcador = str_extract(Clave, "FALCALI|GAMGT|FILIRUB|GOT|GPT|INR"),
+    Día = str_extract(Clave, "\\d+|A$"),
+    Día = if_else(Día == "A", "Alta", Día),
+    Biomarcador = recode(Biomarcador,
+                         "FALCALI" = "Fosfatasa alcalina",
+                         "GAMGT" = "GGT",
+                         "FILIRUB" = "Bilirubina",
+                         "GOT" = "GOT (AST)",
+                         "GPT" = "GPT (ALT)")
+  ) %>%
+  
+  # 4. Filtrado de valores faltantes
   filter(!is.na(Valor)) %>%
   
-  ggplot(aes(x = as.factor(DHANP), y = Valor, fill = as.factor(DHANP))) +
-  geom_boxplot(alpha = 0.8, outlier.shape = NA) +
-  geom_jitter(width = 0.15, alpha = 0.3, size = 1) +
+  # 5. Boxplots
+  ggplot(aes(x = Día, y = Valor, fill = Día)) +
+  geom_boxplot(alpha = 0.6, outlier.shape = NA) +
+  geom_jitter(width = 0.15, alpha = 0.2, size = 0.8) +
   
+  # 5.1. Líneas de corte
   geom_hline(data = umbrales_dhanp, aes(yintercept = Corte),
-             linetype = "dashed", color = viridis(3)[2], size = 0.7) +
+             linetype = "dashed", color = "firebrick", linewidth = 0.8) +
   
-  facet_wrap(~ Biomarcador, scales = "free") +
+  # 5.2. Separación de gráficos por biomarcador
+  facet_wrap(~ Biomarcador, scales = "free_y", ncol = 3) +
+  
+  # 5.3. Estética
   scale_y_log10() +
   scale_fill_viridis_d() +
   labs(
-    title = "Distribución de biomarcadores vs. criterios diagnósticos",
-    subtitle = "Eje y en escala logarítmica",
-    x = "DHANP",
-    y = "Valor",
-    fill = "DHANP"
+    title = "Evolución de biomarcadores hepáticos en NP",
+    subtitle = "Las líneas indican los puntos de corte diagnósticos",
+    x = "Control",
+    y = "Valor (log10)"
   ) +
   theme_minimal() +
   theme(
+    axis.text.x = element_blank(),
     panel.grid.minor = element_blank(),
     plot.title = element_text(face = "bold"),
     legend.position = "bottom",
@@ -917,11 +966,22 @@ plot_dhanp_dist
 # ---- Tabla resumen ----
 
 # Tabla de indicadores
-tabla_indicadores <- bind_rows(resumen_i1, resumen_i2, resumen_i4, resumen_i6,
-                               resumen_i7, resumen_i8, resumen_i9, resumen_i12)
-rm(list = ls(pattern = "^resumen"))
+tabla_indicadores <- bind_rows(
+  resumen_i1, resumen_i2, resumen_i4, resumen_i6,
+  resumen_i7, resumen_i8, resumen_i9, resumen_i12
+) %>%
+  mutate(
+    `Resultado (%)` = sprintf("%.2f%%", `Resultado (%)`)
+  ) %>%
+  
+  kable(
+    col.names = c("Indicador", "Num.", "Denom.", "Resultado", 
+                    "IC 95% (inf – sup)", "Estándar")
+  )
 
-kable(tabla_indicadores)
+tabla_indicadores
+
+rm(list = ls(pattern = "^resumen"))
 
 ```
 
