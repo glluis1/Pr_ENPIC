@@ -39,6 +39,9 @@ Los resultados de los indicadores se presentan como porcentajes e intervalos de 
 if (!require("haven")) {
   install.packages("haven")
 }
+if (!require("rstatix")) {
+  install.packages("rstatix")
+}
 if (!require("ggVennDiagram")) {
   install.packages("ggVennDiagram")
 }
@@ -52,6 +55,7 @@ library(lubridate)
 library(knitr)
 library(tidyr)
 library(tidyverse)
+library(rstatix)
 library(ggplot2)
 library(ggVennDiagram)
 library(viridisLite)
@@ -87,7 +91,10 @@ resumen_i1 <- datos %>%
   # 1. Filtrado de pacientes con estancia > 48 h
   filter(DIASUCI >= 2) %>% # Todos
   
-  # 2. Cálculo del porcentaje y los IC
+  # 2. Gestión de registros erróneos
+  filter(NUTRIC_Score <= 9 | is.na(NUTRIC_Score)) %>%
+  
+  # 3. Cálculo del porcentaje y los IC
   summarise(
     Indicador = "1. Riesgo nutricional",
     Numerador = sum(!is.na(NUTRIC_Score)),
@@ -102,7 +109,7 @@ resumen_i1 <- datos %>%
 
 # Gráfico de barras
 plot_nutric <- datos %>%
-  filter(!is.na(NUTRIC_Score)) %>%
+  filter(!is.na(NUTRIC_Score), NUTRIC_Score <= 9) %>%
   mutate(Riesgo = if_else(NUTRIC_Score >= 5, "Alto", "Bajo")) %>%
   
   ggplot(aes(x = as.factor(NUTRIC_Score), fill = Riesgo)) +
@@ -122,10 +129,6 @@ plot_nutric <- datos %>%
 
 plot_nutric
 
-# ¿NUTRIC Score = 11 es correcto?
-# ¿Punto de corte >= 5 o >= 6? Sin IL-6, la literatura sugiere la 1a opción (Reis et al.)
-# NA: ¿se puede calcular la puntuación con los datos disponibles?
-
 # Inferencia:
 # - ¿Riesgo nutricional afecta al tiempo en la UCI / mortalidad?
 # - ¿Hay diferencias en outcomes según grupo de riesgo y cumplimiento de objetivos?
@@ -142,7 +145,7 @@ Se realizó la valoración del estado nutricional en 233 de los 233 pacientes co
 
 resumen_i2 <- datos %>%
   # 1. Filtrado de pacientes con riesgo nutricional (NUTRIC Score > 5)
-  filter(NUTRIC_Score >= 5) %>%
+  filter(NUTRIC_Score >= 5, NUTRIC_Score <= 9) %>%
   
   # 2. Cálculo del porcentaje y los IC
   summarise(
@@ -286,7 +289,7 @@ analisis_error <- function(datos, columna, valor_inf, valor_sup,
       Categoria = case_when(
         {{ columna }} < (0.6 * valor_inf) ~ "Hiponutrición (<60%)",
         {{ columna }} >= (0.6 * valor_inf) & {{ columna }} < (0.8 * valor_inf) ~ 
-          "Borderline (60-80%)",
+          "Aporte subóptimo (60-80%)",
         {{ columna }} >= (0.8 * valor_inf) & {{ columna }} <= (1.1 * valor_sup) ~ 
           "Aporte adecuado (80-110%)",
         {{ columna }} > (1.1 * valor_sup) ~ "Hipernutrición (>110%)"
@@ -294,7 +297,7 @@ analisis_error <- function(datos, columna, valor_inf, valor_sup,
     
       Categoria = factor(Categoria, levels = c(
         "Hiponutrición (<60%)",
-        "Borderline (60-80%)",
+        "Aporte subóptimo (60-80%)",
         "Aporte adecuado (80-110%)",
         "Hipernutrición (>110%)"
         ))
@@ -351,6 +354,7 @@ tabla_prot_estable
 #'
 #' @param datos Un \code{data.frame} o \code{tibble} que contiene los datos.
 #' @param categoria El nombre de la variable a analizar ("CALORIA" o "PROT").
+#' @param comparar Muestra la comparación entre dos grupos (FALSE por defecto).
 #'
 #' @returns Un objeto `ggplot` con la representació visual de la aportación.
 #' 
@@ -365,14 +369,14 @@ tabla_prot_estable
 #' progresion_aporte(df, "CALORIA")
 #' progresion_aporte(df, "PROT")
 #' }
-progresion_aporte <- function(datos, categoria) {
+progresion_aporte <- function(datos, categoria, comparar = FALSE) {
   
-  # Determinación de variables según la categoría
+  # 1. Determinación de variables según la categoría
   caloria <- categoria == "CALORIA"
   variable <- if_else(caloria, "calórico", "proteico")
   unidades <- if_else(caloria, "kcal/kg/día", "g/kg/día")
   
-  # Objetivos dinámicos
+  # 2. Objetivos dinámicos
   fase_aguda <- if_else(caloria, 12, 0.8 * 0.8)
   fase_estable <- if_else(caloria, 20, 0.8 * 1.3)
   
@@ -383,12 +387,23 @@ progresion_aporte <- function(datos, categoria) {
     Fase = c("Fase aguda", "Fase estable")
   )
   
-  # Procesamiento de datos
+  # 3. Agrupación dinámica
+  grupos <- if (comparar) c("NUTRISCOR2", "Día") else "Día"
+  
+  # 4. Procesamiento de datos
   datos <- datos %>%
-    # 1. Selección de categoría
-    select(Peso_calculo, starts_with(categoria)) %>%
+    # 4.1. Recodificación del riesgo nutricional
+    mutate(
+      NUTRISCOR2 = factor(datos$NUTRISCOR2,
+                          levels = c(0, 1),
+                          labels = c("Riesgo bajo (NUTRIC Score < 5)",
+                                     "Riesgo alto (NUTRIC Score >= 5"))
+    ) %>%
     
-    # 2. Cálculo del aporte por kg y día
+    # 4.1. Selección de categoría
+    select(any_of("NUTRISCOR2"), Peso_calculo, starts_with(categoria)) %>%
+    
+    # 4.2. Cálculo del aporte por kg y día
     pivot_longer(
       cols = starts_with(categoria),
       names_to = "Día",
@@ -400,9 +415,17 @@ progresion_aporte <- function(datos, categoria) {
       Aporte = Aporte / Peso_calculo
     ) %>%
     
-    # 3. Cálculo de mediana y RIQ por día
-    filter(!is.na(Día), !is.na(Aporte)) %>%
-    group_by(Día) %>%
+    # 4.3. Filtraje de NA
+    filter(!is.na(Día), !is.na(Aporte))
+  
+  # 5. Si se comparan grupos, elimina NA
+  if (comparar) {
+    datos <- datos %>% filter(!is.na(NUTRISCOR2))
+  }
+  
+  # 6. Cálculo de mediana y RIQ por día
+  datos <- datos %>%
+    group_by(across(all_of(grupos))) %>%
     summarise(
       Mediana = median(Aporte, na.rm = TRUE),
       P25 = quantile(Aporte, 0.25, na.rm = TRUE),
@@ -410,22 +433,22 @@ progresion_aporte <- function(datos, categoria) {
       .groups = "drop"
     )
   
-  # Gráfico de progresión temporal
+  # 7. Gráfico de progresión temporal
   plot_out <- ggplot(datos, aes(x = Día, y = Mediana)) +
-    # 1. Sombreado del RIQ
+    # 7.1. Sombreado del RIQ
     geom_ribbon(aes(ymin = P25, ymax = P75), 
                 fill = viridis(3)[2], alpha = 0.1) +
     
-    # 2. Línea de tendencia principal y puntos
+    # 7.2. Línea de tendencia principal y puntos
     geom_line(color = viridis(3)[2], size = 1.2) +
     geom_point(color = viridis(3)[2], size = 3) +
     
-    # 3. Líneas de objetivo
+    # 7.3. Líneas de objetivo
     geom_segment(data = objetivos,
                  aes(x = x, xend = xend, y = y, yend = y, color = Fase),
                  linetype = "dashed", linewidth = 1) +
     
-    # 4. Estética
+    # 7.4. Estética
     scale_color_manual(
       name = "Objetivos nutricionales:",
       values = c("Fase aguda" = viridis(3)[1], "Fase estable" = "firebrick")
@@ -439,7 +462,7 @@ progresion_aporte <- function(datos, categoria) {
       legend.position = "bottom"
     ) +
     
-    # 5. Texto y etiquetas
+    # 7.5. Texto y etiquetas
     labs(
       title = paste0("Progresión del aporte ", variable, " diario"),
       subtitle = paste0("Mediana de ", unidades, " con rango intercuartílico"),
@@ -448,6 +471,10 @@ progresion_aporte <- function(datos, categoria) {
       color = "Referencias:"
     )
   
+  if (comparar) {
+    plot_out <- plot_out + facet_wrap(~NUTRISCOR2)
+  }
+  
   return(plot_out)
 }
 
@@ -455,9 +482,81 @@ progresion_aporte <- function(datos, categoria) {
 plot_calorias <- progresion_aporte(datos = datos, categoria = "CALORIA")
 plot_proteinas <- progresion_aporte(datos = datos, categoria = "PROT")
 
+plot_comp_cal <- progresion_aporte(datos, "CALORIA", comparar = TRUE)
+plot_comp_prot <- progresion_aporte(datos, "PROT", comparar = TRUE)
+
 plot_calorias
 plot_proteinas
 
+plot_comp_cal
+plot_comp_prot
+
+```
+
+```{r}
+comparacion_aporte <- function(datos, categoria) {
+  # 1. Determinación de variables según la categoría
+  caloria <- categoria == "CALORIA"
+  variable <- if_else(caloria, "calórico", "proteico")
+  unidades <- if_else(caloria, "kcal/kg/día", "g/kg/día")
+  
+  datos <- datos %>%
+    select(NUTRISCOR2, Peso_calculo, starts_with(categoria)) %>%
+    
+    pivot_longer(
+      cols = starts_with(categoria),
+      names_to = "Día",
+      names_prefix = categoria,
+      values_to = "Aporte"
+    ) %>%
+    mutate(
+      Día = as.numeric(Día),
+      Aporte = Aporte / Peso_calculo
+    ) %>%
+    
+    filter(!is.na(Día), !is.na(Aporte), !is.na(NUTRISCOR2))
+  
+  p_valores <- datos %>%
+    group_by(Día) %>%
+    wilcox_test(Aporte ~ NUTRISCOR2) %>%
+    add_significance("p") %>%
+    select(Día, p)
+  
+  tabla <- datos %>%
+    group_by(Día, NUTRISCOR2) %>%
+    summarise(
+      estado = paste0(round(median(Aporte), 2),
+                      " [", round(quantile(Aporte, 0.25), 2),
+                      "-", round(quantile(Aporte, 0.75), 2), "]"),
+      ,groups = "drop"
+    ) %>%
+    pivot_wider(
+      names_from = NUTRISCOR2,
+      values_from = estado
+    ) %>%
+    left_join(p_valores, by = "Día") %>%
+    select(
+      `Día`,
+      `Riesgo bajo (Mediana [RIQ])` = `0`,
+      `Riesgo alto (Mediana [RIQ])` = `1`,
+      `valor p` = p
+    )
+  
+  return(kable(tabla,
+               caption = paste0(
+                 "**Comparación de aporte ", variable, "** (", unidades, ")"
+               ),
+               align = "crrr"))
+}
+
+
+tabla_comp_cal <- comparacion_aporte(datos, "CALORIA")
+tabla_comp_prot <- comparacion_aporte(datos, "PROT")
+
+tabla_comp_cal
+tabla_comp_prot
+
+# No s'aplica correcció per comparacions múltiples perquè en l'anàlisi exploratòria ja no hi ha cap p < 0,05
 ```
 
 ```{r}
@@ -533,6 +632,7 @@ plot_cumplimiento
 ```{r}
 # Para inferencia: tabla de contingencia fase aguda - fase estable
 
+# Taules aportació: per a la indicació de NPC, taula dia 4
 ```
 
 ## Nutrición enteral precoz (100%)
@@ -620,6 +720,8 @@ resumen_i8 <- datos %>%
               prop.test(Numerador, Denominador, 0.9)$conf.int[2] * 100),
     Estándar = ">90%"
   )
+
+# Gràfic de distribució de temps d'inici de la NPC
 
 ```
 
@@ -886,6 +988,8 @@ plot_dhanp_venn
 
 # ¿Qué pasa con los valores faltantes?
 
+# Lesió mixta = colestasi + necrosi!!!
+
 ```
 
 ```{r}
@@ -958,6 +1062,8 @@ plot_dhanp_dist <- datos_dhanp %>%
 
 plot_dhanp_dist
 
+# Gràfic de comparació NE-NPT
+
 ```
 
 ## Resumen de indicadores
@@ -982,6 +1088,10 @@ tabla_indicadores <- bind_rows(
 tabla_indicadores
 
 rm(list = ls(pattern = "^resumen"))
+
+# Quins indicadors compleix cada pacient?
+
+# Outcomes: supervivència? estat als 28 dies?
 
 ```
 
