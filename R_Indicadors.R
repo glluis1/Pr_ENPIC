@@ -5,8 +5,11 @@ if (!require("haven")) {
 if (!require("rstatix")) {
   install.packages("rstatix")
 }
-if (!require("ggVennDiagram")) {
-  install.packages("ggVennDiagram")
+if (!require("ggpubr")) {
+  install.packages("ggpubr")
+}
+if (!require("ggvenn")) {
+  install.packages("ggvenn")
 }
 if (!require("viridisLite")) {
   install.packages("viridisLite")
@@ -19,8 +22,9 @@ library(knitr)
 library(tidyr)
 library(tidyverse)
 library(rstatix)
+library(ggpubr)
 library(ggplot2)
-library(ggVennDiagram)
+library(ggvenn)
 library(viridisLite)
 
 
@@ -72,53 +76,3 @@ datos$FINICNPT2[datos$IDICOMEP == 4007] <-
 
 datos$TIPO_SN_Grupo[datos$IDICOMEP == 34006] <- 3
 datos$TIPO_SN_Grupo[datos$IDICOMEP == 34007] <- 3
-
-
-# Comprobación NUTRIC Score
-calculo_nutric <- function(edad, apache, sofa, comorb, t_uci) {
-  pts_edad = case_when(
-    edad < 50 ~ 0,
-    edad >= 50 & edad < 75 ~ 1,
-    edad >= 75 ~ 2,
-    TRUE ~ 0
-  )
-  
-  pts_apache = case_when(
-    apache < 15 ~ 0,
-    apache >= 15 & apache < 20 ~ 1,
-    apache >= 20 & apache < 28 ~ 2,
-    apache >= 28 ~ 3,
-    TRUE ~ 0
-  )
-  
-  pts_sofa = case_when(
-    sofa < 6 ~ 0,
-    sofa >= 6 & sofa < 10 ~ 1,
-    sofa >= 10 ~ 2,
-    TRUE ~ 0
-  )
-  
-  pts_comorb = if_else(comorb >=2, 1, 0, missing = 0)
-  
-  pts_t_uci = if_else(t_uci >= 1, 1, 0, missing = 0)
-  
-  return(pts_edad + pts_apache + pts_sofa + pts_comorb + pts_t_uci)
-}
-
-
-# Cálculo NUTRIC Score
-datos <- datos %>%
-  mutate(
-    comorb = rowSums(select(., ALCOHOL, AHTA, ADBTM, ACARDIOP, AEPOC, AIRC,
-                            ACIRROSIS, AINMUNO, ANEOPLAS), na.rm = TRUE),
-    
-    t_uci = round(as.numeric(difftime(INGUCI, FECHAING, units = "days")), 2),
-    
-    Calculo_NUTRIC = calculo_nutric(EDAD, APACHEII, SOFA1, comorb, t_uci)
-  )
-
-# Registros erróneos
-datos_comprobacion_nutric <- datos %>%
-  select(IDICOMEP, EDAD, APACHEII, SOFA1, comorb, t_uci, 
-         NUTRIC_Score, Calculo_NUTRIC) %>%
-  filter(abs(NUTRIC_Score - Calculo_NUTRIC) > 1)
