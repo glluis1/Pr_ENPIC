@@ -11,7 +11,7 @@ bibliography: references.bib
 ---
 
 ```{r setup, include=FALSE}
-require(knitr)
+library(knitr)
 
 opts_chunk$set(echo = FALSE,
                warning = FALSE,
@@ -36,14 +36,21 @@ Los resultados de los indicadores se presentan como porcentajes e intervalos de 
 
 ```{r}
 # ---- Instalación de paquetes ----
+
 if (!require("haven")) {
   install.packages("haven")
+}
+if (!require("tidyverse")) {
+  install.packages("tidyverse")
 }
 if (!require("rstatix")) {
   install.packages("rstatix")
 }
 if (!require("ggpubr")) {
   install.packages("ggpubr")
+}
+if (!require("ggalluvial")) {
+  install.packages("ggalluvial")
 }
 if (!require("ggvenn")) {
   install.packages("ggvenn")
@@ -52,17 +59,20 @@ if (!require("viridisLite")) {
   install.packages("viridisLite")
 }
 
+```
+
+```{r}
+# Gestión de datos y archivos
 library(haven)
-library(dplyr)
-library(lubridate)
-library(knitr)
-library(tidyr)
 library(tidyverse)
+
+# Estadística y gráficos
 library(rstatix)
 library(ggpubr)
-library(ggplot2)
+library(ggalluvial)
 library(ggvenn)
 library(viridisLite)
+
 
 ```
 
@@ -695,8 +705,109 @@ plot_cumplimiento
 
 ```
 
+Tabla de contingencia
+
 ```{r}
-# Para inferencia: tabla de contingencia fase aguda - fase estable
+#' Title
+#' 
+#' @description
+#' 
+#'
+#' @param datos 
+#' @param categoria 
+#' @param valor_ag 
+#' @param valor_es 
+#'
+#' @returns
+#' 
+#' @importFrom
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Ejemplo de uso con datos hipotéticos
+#' grupos_aporte(df, "CALORIA", 15, 20)
+#' }
+grupos_aporte <- function (datos, categoria, valor_ag, valor_es) {
+  # 1. Selección de columnas según la categoría
+  if (categoria == "CALORIA") {
+    col_aguda <- sym("Media_cal_aguda")
+    col_estable <- sym("Media_cal_estable")
+    variable <- "calórico"
+  } else {
+    col_aguda <- sym("Media_prot_aguda")
+    col_estable <- sym("Media_prot_estable")
+    variable <- "proteico"
+  }
+  
+  # 2. Comparación fase aguda - fase estable
+  cambio <- datos %>%
+    # Grupo de aporte nutricional
+    mutate(
+      grupo_aguda = if_else(
+        !!col_aguda < (0.8 * valor_ag), "Bajo (<80%)", "Adecuado"
+      ),
+      
+      grupo_estable = if_else(
+        !!col_estable < (0.8 * valor_es), "Bajo (<80%)", "Adecuado"
+      ),
+      
+      grupo_aguda = factor(grupo_aguda, 
+                           levels = c("Bajo (<80%)", "Adecuado")),
+      grupo_estable = factor(grupo_estable, 
+                             levels = c("Bajo (<80%)", "Adecuado"))
+    )
+  
+  # 3. Estructura de las tablas (valores absolutos y %)
+  tabla_abs <- table(cambio$grupo_aguda, cambio$grupo_estable)
+  tabla_pct <- prop.table(tabla_abs) * 100
+  
+  # 4. Test de McNemar
+  test <- mcnemar.test(tabla_abs)
+  p_valor <- test$p.value
+  p_text <- if_else(
+    p_valor < 0.001, "p < 0.001", paste0("p = ", round(p_valor, 3))
+  )
+  
+  # 5. Márgenes con totales
+  tabla_abs <- addmargins(tabla_abs)
+  tabla_pct <- addmargins(tabla_pct)
+  
+  # 6. Tabla de contingencia
+  tabla_cont <- matrix(
+    sprintf("%d (%.1f%%)", tabla_abs, tabla_pct),
+    nrow = nrow(tabla_abs),
+    dimnames = dimnames(tabla_abs)
+  )
+  
+  # 7. Etiquetas
+  rownames(tabla_cont)[rownames(tabla_cont) == "Sum"] <- "Total"
+  colnames(tabla_cont)[colnames(tabla_cont) == "Sum"] <- "Total"
+  
+  # 8. Conversión a data frame
+  df_tabla_cont <- as.data.frame.matrix(tabla_cont)
+  
+  df_tabla_cont <- cbind(`Fase Aguda` = rownames(df_tabla_cont), df_tabla_cont)
+  rownames(df_tabla_cont) <- NULL
+  
+  colnames(df_tabla_cont) <- c(
+    "Fase Aguda / Fase Estable", "Bajo (<80%)", "Adecuado", "Total"
+  )
+  
+  return(kable(df_tabla_cont,
+               caption = paste0(
+                 "**Evolución de los niveles de aporte ", variable,
+                 "** | Test de McNemar: ", p_text
+               ),
+               align = "lccc"))
+}
+
+tabla_evol_cal <- grupos_aporte(datos, "CALORIA", 15, 25)
+tabla_evol_prot <- grupos_aporte(datos, "PROT", 0.8, 1.3)
+
+tabla_evol_cal
+tabla_evol_prot
+
 ```
 
 ## Nutrición enteral precoz (100%)
