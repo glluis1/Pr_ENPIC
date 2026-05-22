@@ -1,9 +1,16 @@
 # ---- Instalación de paquetes ----
+
 if (!require("haven")) {
   install.packages("haven")
 }
+if (!require("tidyverse")) {
+  install.packages("tidyverse")
+}
 if (!require("rstatix")) {
   install.packages("rstatix")
+}
+if (!require("gtsummary")) {
+  install.packages("gtsummary")
 }
 if (!require("ggpubr")) {
   install.packages("ggpubr")
@@ -15,17 +22,19 @@ if (!require("viridisLite")) {
   install.packages("viridisLite")
 }
 
+# Gestión de datos y archivos
 library(haven)
-library(dplyr)
-library(lubridate)
-library(knitr)
-library(tidyr)
 library(tidyverse)
+
+# Estadística y gráficos
 library(rstatix)
+library(gtsummary)
 library(ggpubr)
-library(ggplot2)
 library(ggvenn)
 library(viridisLite)
+
+# Presentación
+library(knitr)
 
 
 # ---- Preparación de los datos ----

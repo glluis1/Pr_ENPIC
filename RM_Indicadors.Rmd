@@ -22,7 +22,7 @@ opts_chunk$set(echo = FALSE,
                prompt = FALSE,
                tidy.opts = list(width.cutoff = 72),
                fig.width = 7,
-               fig.height = 5)
+               fig.height = 4.5)
 
 options(width = 75)
 
@@ -46,6 +46,9 @@ if (!require("tidyverse")) {
 if (!require("rstatix")) {
   install.packages("rstatix")
 }
+if (!require("gtsummary")) {
+  install.packages("gtsummary")
+}
 if (!require("ggpubr")) {
   install.packages("ggpubr")
 }
@@ -68,6 +71,7 @@ library(tidyverse)
 
 # Estadística y gráficos
 library(rstatix)
+library(gtsummary)
 library(ggpubr)
 library(ggalluvial)
 library(ggvenn)
@@ -96,7 +100,89 @@ datos$TIPO_SN_Grupo[datos$IDICOMEP == 34007] <- 3
 
 ## Caracterización de la muestra
 
-[Pendent]
+Los datos de la población estudiada se muestran como media ± desviación estándar (cuando la variable sigue una distribución normal, evaluada mediante la prueba de Shapiro-Wilk), mediana [rango intercuartílico (RIC)] (en caso contrario) o frecuencia absoluta (porcentaje).
+
+Se muestra también la comparación entre los grupos que inicialmente reciben nutrición enteral (NE) o parenteral (NE). Para las variables continuas, se emplean las pruebas estadísticas t de Student (paramétrica) y U de Mann-Whitney-Wilcoxon (no paramétrica). En el caso de las variables categóricas, se utiliza la prueba Chi-cuadrado de Pearson o la prueba exacta de Fisher cuando las frecuencias esperadas son inferiores a 5.
+
+Los grupos son heterogéneos ($p < 0,05$) en el caso del grupo diagnóstico al que pertenecen los pacientes, el valor del NUTRIC Score, el tiempo de estancia en la UCI y en el hospital y las necesidades de ventilación mecánica.
+
+```{r}
+tabla_muestra <- datos %>%
+  mutate(
+    SN = if_else(TIPO_SN_Grupo == 1, "NE", "NP")
+  ) %>%
+  
+  select(SN, EDAD, SEXO, BMI, STATUS3, NUTRIC_Score, DIAS_UCI, DIAS_HOSP,
+         TOTAL_DIAS_SN, VM, DIASVM, DIAS_HOSP, Estado28d) %>%
+  
+  mutate(
+    across(c(SEXO, STATUS3, Estado28d), ~ as_factor(.x)),
+    VM = as.character(VM),
+    
+    STATUS3 = case_match(
+      as.character(STATUS3),
+      "QUIRURGICO" ~ "Quirúrgico",
+      "MEDICO" ~ "Médico",
+      "TRAUMA" ~ "Traumático"
+    ),
+    
+    Estado28d = case_match(
+      as.character(Estado28d),
+      "Ingresado" ~ "Ingreso",
+      .default = as.character(Estado28d)
+    )
+  ) %>%
+  
+  tbl_summary(
+    by = SN,
+    missing = "no",
+    
+    type = list(
+      SEXO ~ "dichotomous",
+      VM ~ "dichotomous"
+    ),
+    
+    value = list(
+      SEXO ~ "Mujer",
+      VM ~ "1"
+    ),
+    
+    label = list(
+      SEXO ~ "Sexo (Mujer)",
+      STATUS3 ~ "Grupo diagnóstico",
+      DIAS_UCI ~ "Estancia en UCI (días)",
+      DIAS_HOSP ~ "Estancia en Hospital (días)",
+      VM ~ "Ventilación Mecánica",
+      Estado28d ~ "Estado a los 28 días de ingreso"
+    ),
+    
+    statistic = list(
+      all_continuous() ~ "{median} [{p25}, {p75}]",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    
+    digits = list(all_continuous() ~ 1)
+  ) %>%
+  
+  add_overall(
+    last = FALSE, col_label = paste0("**Total**<br>N = {N}")
+  ) %>%
+  add_p() %>%
+  
+  modify_header(
+    label = "**Variable**",
+    p.value = "**Valor p**"
+  ) %>%
+  
+  modify_footnote(
+    all_stat_cols() ~ 
+      "Valores expresados como mediana [RIC] o n (%)",
+    p.value ~ "Prueba de la suma de rangos de Wilcoxon; Prueba de Chi-cuadrado de Pearson; Prueba exacta de Fisher"
+  )
+
+tabla_muestra
+```
+
 
 ## Identificación de enfermos en riesgo nutricional (100%)
 
@@ -569,7 +655,7 @@ comparacion_aporte <- function(datos, categoria) {
     summarise(
       estado = paste0(round(median(Aporte), 2),
                       " [", round(quantile(Aporte, 0.25), 2),
-                      "-", round(quantile(Aporte, 0.75), 2), "]"),
+                      ", ", round(quantile(Aporte, 0.75), 2), "]"),
       .groups = "drop"
     ) %>%
     pivot_wider(
@@ -579,9 +665,9 @@ comparacion_aporte <- function(datos, categoria) {
     left_join(p_valores, by = "Día") %>%
     select(
       `Día`,
-      `Riesgo bajo (Mediana [RIQ])` = `0`,
-      `Riesgo alto (Mediana [RIQ])` = `1`,
-      `valor p` = p
+      `Riesgo bajo (Mediana [RIC])` = `0`,
+      `Riesgo alto (Mediana [RIC])` = `1`,
+      `Valor p` = p
     )
   
   return(kable(tabla,
@@ -705,22 +791,27 @@ plot_cumplimiento
 
 ```
 
-Tabla de contingencia
+Por último, se muestran las tablas de contingencia para el cambio entre niveles de aporte calórico y proteico entre la fase aguda y la fase estable (se excluyen los pacientes sin datos en alguna de las fases). Para favorecer la interpretación, se ha tenido en cuenta únicamente el umbral del 80% de aporte nutricional y se ha utilizado el test de McNemar para datos apareados.
+
+En ambos casos, el valor $p$ es inferior a 0,001. Así, existe evidencia significativa de asimetría en la dirección del cambio. En las tablas se puede observar una tendencia a pasar de un aporte adecuado en fase aguda a no cumplir los requerimientos en fase estable, siendo mucho menor en sentido inverso.
 
 ```{r}
-#' Title
+#' Tabla de contingencia y test de McNemar
 #' 
 #' @description
-#' 
+#' Clasifica el aporte nutricional en función del umbral del 80% y genera una tabla de contingencia que muestra la evolución entre fase aguda y fase estable.
 #'
-#' @param datos 
-#' @param categoria 
-#' @param valor_ag 
-#' @param valor_es 
+#' @param datos Un \code{data.frame} o \code{tibble} que contiene los datos.
+#' @param categoria El nombre de la variable a analizar ("CALORIA" o "PROT"). 
+#' @param valor_ag Numérico. Valor de corte en fase aguda.
+#' @param valor_es Numérico. Valor de corte en fase estable.
 #'
-#' @returns
+#' @returns Una tabla objeto \code{knitr_kable} con los valores absolutos, los porcentajes y el valor p.
 #' 
-#' @importFrom
+#' @importFrom dplyr %>% mutate if_else
+#' @importFrom rlang sym !!
+#' @importFrom knitr kable
+#' @importFrom stats mcnemar.test prop.table addmargins
 #' @export
 #'
 #' @examples
@@ -1180,7 +1271,11 @@ resumen_i12 <- datos_dhanp %>%
 
 ```
 
-Se incluye un diagrama de Venn con la relación entre las 2 categorías y un gráfico de cajas que muestra la evolución de cada biomarcador en este subconjunto de pacientes.
+Se incluye un diagrama de Venn con la relación entre las 2 categorías. El patrón mayoritario de DHANP es colestásico, con 22 casos (29,3%) de lesión mixta. No se observa ningún caso de necrosis pura.
+
+El gráfico de cajas muestra la evolución de cada biomarcador en este subconjunto de pacientes. Existe una tendencia marcada al alza para la fosfatasa alcalina y la gamma-glutamil transferasa (GGT), mientras que el resto de biomarcadores se mantienen constantes o incluso muestran una tendencia a la baja, como el Índice Internacional Normalizado (INR). Cabe destacar que más del 50% de estos pacientes presentan la GGT por encima del umbral diagnóstico desde el primer día.
+
+No se incluyen los valores de significación estadística debido al elevado número de valores faltantes, que imposibilitan su cálculo adecuado mediante la prueba no paramétrica de Friedman para medidas repetidas.
 
 ```{r}
 # Diagrama de Venn
@@ -1284,7 +1379,7 @@ plot_dhanp_dist <- datos_dhanp %>%
 
 plot_dhanp_dist
 
-# Gràfic de comparació NE-NPT
+rm(umbrales_dhanp)
 
 ```
 
