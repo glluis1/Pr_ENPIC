@@ -165,7 +165,7 @@ tabla_muestra <- datos %>%
   ) %>%
   
   add_overall(
-    last = FALSE, col_label = paste0("**Total**<br>N = {N}")
+    last = FALSE, col_label = paste0("**Total** N = {N}")
   ) %>%
   add_p() %>%
   
@@ -591,9 +591,6 @@ plot_proteinas <- progresion_aporte(datos = datos, categoria = "PROT")
 plot_comp_cal <- progresion_aporte(datos, "CALORIA", comparar = TRUE)
 plot_comp_prot <- progresion_aporte(datos, "PROT", comparar = TRUE)
 
-plot_calorias
-plot_proteinas
-
 plot_comp_cal
 plot_comp_prot
 
@@ -836,17 +833,21 @@ grupos_aporte <- function (datos, categoria, valor_ag, valor_es) {
     # Grupo de aporte nutricional
     mutate(
       grupo_aguda = if_else(
-        !!col_aguda < (0.8 * valor_ag), "Bajo (<80%)", "Adecuado"
+        !!col_aguda < (0.8 * valor_ag), 
+        "Insuficiente (<80%)", "Adecuado (≥80%)"
       ),
       
       grupo_estable = if_else(
-        !!col_estable < (0.8 * valor_es), "Bajo (<80%)", "Adecuado"
+        !!col_estable < (0.8 * valor_es), 
+        "Insuficiente (<80%)", "Adecuado (≥80%)"
       ),
       
-      grupo_aguda = factor(grupo_aguda, 
-                           levels = c("Bajo (<80%)", "Adecuado")),
-      grupo_estable = factor(grupo_estable, 
-                             levels = c("Bajo (<80%)", "Adecuado"))
+      grupo_aguda = factor(
+        grupo_aguda, levels = c("Insuficiente (<80%)", "Adecuado (≥80%)")
+      ),
+      grupo_estable = factor(
+        grupo_estable, levels = c("Insuficiente (<80%)", "Adecuado (≥80%)")
+      )
     )
   
   # 3. Estructura de las tablas (valores absolutos y %)
@@ -882,7 +883,7 @@ grupos_aporte <- function (datos, categoria, valor_ag, valor_es) {
   rownames(df_tabla_cont) <- NULL
   
   colnames(df_tabla_cont) <- c(
-    "Fase Aguda / Fase Estable", "Bajo (<80%)", "Adecuado", "Total"
+    "Fase Aguda / Fase Estable", "Insuficiente (<80%)", "Adecuado (≥80%)", "Total"
   )
   
   return(kable(df_tabla_cont,
@@ -898,6 +899,95 @@ tabla_evol_prot <- grupos_aporte(datos, "PROT", 0.8, 1.3)
 
 tabla_evol_cal
 tabla_evol_prot
+
+```
+
+```{r}
+# Alluvial plot
+plot_evol <- datos %>%
+  # 1. Perfiles de cumplimiento
+  mutate(
+    # 1.1. Fase aguda
+    cal_ok_ag = Media_cal_aguda >= (0.8 * 15),
+    prot_ok_ag = Media_prot_aguda >= (0.8 * 0.8),
+    
+    Perfil_ag = case_when(
+      cal_ok_ag & prot_ok_ag ~ "Adecuado (≥80%)",
+      cal_ok_ag & !prot_ok_ag ~ "Calórico",
+      !cal_ok_ag & prot_ok_ag ~ "Proteico",
+      !cal_ok_ag & !prot_ok_ag ~ "Insuficiente (<80%)"
+    ),
+    
+    # 1.2. Fase estable
+    cal_ok_es = Media_cal_estable >= (0.8 * 25),
+    prot_ok_es = Media_prot_estable >= (0.8 * 1.3),
+    
+    Perfil_es = case_when(
+      cal_ok_es & prot_ok_es ~ "Adecuado (≥80%)",
+      cal_ok_es & !prot_ok_es ~ "Calórico",
+      !cal_ok_es & prot_ok_es ~ "Proteico",
+      !cal_ok_es & !prot_ok_es ~ "Insuficiente (<80%)"
+    )
+  ) %>%
+  
+  # 2. Pacientes con datos en ambas fases
+  filter(!is.na(Perfil_ag) & !is.na(Perfil_es)) %>%
+  
+  # 3. Agrupación de datos
+  group_by(Perfil_ag, Perfil_es) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  
+  # 4. Orden de factores
+  mutate(
+    Perfil_ag = factor(
+      Perfil_ag, levels = c("Adecuado (≥80%)",
+                            "Calórico",
+                            "Proteico",
+                            "Insuficiente (<80%)")
+    ),
+    Pefil_es = factor(
+      Perfil_es, levels = c("Adecuado (≥80%)",
+                            "Calórico",
+                            "Proteico",
+                            "Insuficiente (<80%)")
+    )
+  ) %>%
+  
+  # 5. Gráfico
+  ggplot(aes(y = n, axis1 = Perfil_ag, axis2 = Perfil_es)) +
+  geom_alluvium(aes(fill = Perfil_ag), alpha = 0.6, width = 1/4) +
+  geom_stratum(width = 1/4, fill = "white", color = "grey30") +
+  
+  # 5.1. Etiquetas
+  geom_text(
+    stat = "stratum",
+    aes(label = paste0(
+      after_stat(stratum), "\n",
+      "n = ", after_stat(count), " (", 
+      sprintf("%.1f", after_stat(count) / sum(after_stat(count)) * 200), "%)"
+    )),
+    size = 2.7, fontface = "bold", lineheight = 0.8
+  ) +
+  
+  # 5.2. Estética
+  scale_x_discrete(limits = c("Fase Aguda", "Fase Estable"), 
+                   expand = c(0.15, 0.05)) +
+  scale_fill_viridis_d() +
+  labs(
+    title = "Dinámica del cumplimiento de objetivos nutricionales",
+    subtitle = "Aporte nutricional por fase",
+    y = "Número de pacientes (n)"
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold"),
+    axis.text.x = element_text(size = 11, face = "bold", color = "black"),
+    legend.position = "none"
+  )
+
+plot_evol
 
 ```
 
@@ -1240,6 +1330,12 @@ datos_dhanp <- datos %>%
         (FALCALIA > 280 | GAMGTA > 50 | FILIRUBA > 1.2) %in% TRUE
     ),
     
+    Colestasis_d1 = case_when(
+      is.na(FALCALI1) & is.na(GAMGT1) & is.na(FILIRUB1) ~ NA,
+      (FALCALI1 > 280 | GAMGT1 > 50 | FILIRUB1 > 1.2) %in% TRUE ~ TRUE,
+      TRUE ~ FALSE
+    ),
+    
     Necrosis = case_when(
       TIPO_SN_Grupo %in% c(2, 4) ~
         (((GOT7 > 40 | GPT7 > 42) & (FILIRUB7 > 1.2 | INR7 > 1.4)) |
@@ -1248,17 +1344,25 @@ datos_dhanp <- datos %>%
         ((GOTA > 40 | GPTA > 42) & (FILIRUBA > 1.2 | INRA > 1.4)) %in% TRUE
     ),
     
+    Necrosis_d1 = case_when(
+      is.na(GOT1) & is.na(GPT1) & is.na(FILIRUB1) & is.na(INR1) ~ NA,
+      ((GOT1 > 40 | GPT1 > 42) & (FILIRUB1 > 1.2 | INR1 > 1.4)) %in% TRUE ~ TRUE,
+      TRUE ~ FALSE
+    ),
+    
     Mixta = if_else(Colestasis & Necrosis, 1, 0),
     
-    DHANP = if_else(Colestasis | Necrosis, 1, 0)
+    DHANP = if_else(Colestasis | Necrosis, 1, 0),
+    
+    DHANP_d1 = if_else(Colestasis_d1 | Necrosis_d1, 1, 0)
   )
 
 rm(vars_7, vars_a)
   
 # Cálculo del porcentaje y los IC
-resumen_i12 <- datos_dhanp %>%
+resumen_i12a <- datos_dhanp %>%
   summarise(
-    Indicador = "12. DHANP",
+    Indicador = "12a. DHANP",
     Numerador = sum(DHANP == 1, na.rm = TRUE),
     Denominador = n(),
     `Resultado (%)` = round((Numerador / Denominador) * 100, 2),
@@ -1268,6 +1372,23 @@ resumen_i12 <- datos_dhanp %>%
               prop.test(Numerador, Denominador, 0.2)$conf.int[2] * 100),
     Estándar = "<20%"
   )
+
+resumen_i12b <- datos_dhanp %>%
+  filter(!is.na(DHANP_d1)) %>%
+  summarise(
+    Indicador = "12b. DHANP (con corrección)",
+    Numerador = sum(DHANP == 1 & DHANP_d1 != 1, na.rm = TRUE),
+    Denominador = n(),
+    `Resultado (%)` = round((Numerador / Denominador) * 100, 2),
+    `IC 95% (inf – sup)` = 
+      sprintf("(%.2f – %.2f)", 
+              prop.test(Numerador, Denominador, 0.2)$conf.int[1] * 100, 
+              prop.test(Numerador, Denominador, 0.2)$conf.int[2] * 100),
+    Estándar = "<20%"
+  )
+
+resumen_i12 <- bind_rows(resumen_i12a, resumen_i12b)
+rm(resumen_i12a, resumen_i12b)
 
 ```
 

@@ -15,6 +15,9 @@ if (!require("gtsummary")) {
 if (!require("ggpubr")) {
   install.packages("ggpubr")
 }
+if (!require("ggalluvial")) {
+  install.packages("ggalluvial")
+}
 if (!require("ggvenn")) {
   install.packages("ggvenn")
 }
@@ -30,6 +33,7 @@ library(tidyverse)
 library(rstatix)
 library(gtsummary)
 library(ggpubr)
+library(ggalluvial)
 library(ggvenn)
 library(viridisLite)
 
