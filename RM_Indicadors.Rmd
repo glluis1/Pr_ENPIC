@@ -181,6 +181,7 @@ tabla_muestra <- datos %>%
   )
 
 tabla_muestra
+
 ```
 
 
@@ -234,11 +235,6 @@ plot_nutric <- datos %>%
   )
 
 plot_nutric
-
-# Inferencia:
-# - ¿Riesgo nutricional afecta al tiempo en la UCI / mortalidad?
-# - ¿Hay diferencias en outcomes según grupo de riesgo y cumplimiento de objetivos?
-# - ¿Predicciones?
 
 ```
 
@@ -626,8 +622,10 @@ comparacion_aporte <- function(datos, categoria) {
   unidades <- if_else(caloria, "kcal/kg/día", "g/kg/día")
   
   datos <- datos %>%
+    # 2. Selección de variables
     select(NUTRISCOR2, Peso_calculo, starts_with(categoria)) %>%
     
+    # 3. Conversión a formato largo
     pivot_longer(
       cols = starts_with(categoria),
       names_to = "Día",
@@ -639,14 +637,27 @@ comparacion_aporte <- function(datos, categoria) {
       Aporte = Aporte / Peso_calculo
     ) %>%
     
+    # 4. Filtraje de valores faltantes
     filter(!is.na(Día), !is.na(Aporte), !is.na(NUTRISCOR2))
   
+  # 5. Test estadístico
   p_valores <- datos %>%
     group_by(Día) %>%
     wilcox_test(Aporte ~ NUTRISCOR2) %>%
     add_significance("p") %>%
     select(Día, p)
   
+  # 6. Recuento diario
+  recuentos <- datos %>%
+    group_by(Día, NUTRISCOR2) %>%
+    summarise(n_grupo = n(), .groups = "drop") %>%
+    pivot_wider(
+      names_from = NUTRISCOR2, 
+      values_from = n_grupo, 
+      names_prefix = "n_"
+    )
+  
+  # 7. Tabla resumen
   tabla <- datos %>%
     group_by(Día, NUTRISCOR2) %>%
     summarise(
@@ -660,18 +671,23 @@ comparacion_aporte <- function(datos, categoria) {
       values_from = estado
     ) %>%
     left_join(p_valores, by = "Día") %>%
+    left_join(recuentos, by = "Día") %>%
     select(
       `Día`,
       `Riesgo bajo (Mediana [RIC])` = `0`,
+      N1 = n_0,
       `Riesgo alto (Mediana [RIC])` = `1`,
+      N2 = n_1,
       `Valor p` = p
     )
   
-  return(kable(tabla,
-               caption = paste0(
-                 "**Comparación de aporte ", variable, "** (", unidades, ")"
-               ),
-               align = "crrr"))
+  return(kable(
+    tabla,
+    caption = paste0(
+      "**Comparación de aporte ", variable, "** (", unidades, ")"
+    ),
+    align = "crcrcr"
+  ))
 }
 
 
@@ -680,6 +696,7 @@ tabla_comp_prot <- comparacion_aporte(datos, "PROT")
 
 tabla_comp_cal
 tabla_comp_prot
+
 ```
 
 En cuanto a la distribución de días dentro de los rangos teóricos de aporte nutricional, el porcentaje de días en rango por paciente va del 0 al 100% en ambos grupos. Aunque se aprecia una ligera tendencia a la baja en el grupo de riesgo bajo, esta no es estadísticamente significativa.
@@ -1288,79 +1305,126 @@ plot_monitorizacion
 
 ## Definición Disfunción Hepática Asociada a la Nutrición Parenteral (\<20%)
 
-De los 101 pacientes que pasan más de 7 días con NP, se excluyen del cálculo 17 registros que no contienen al menos el 50% de los datos en alguno de los controles (día 7 o alta). De los 84 restantes, 75 (89,29%, IC 80,16-94,68) cumplen los criterios de Disfunción Hepática Asociada a la Nutrición Parenteral (DHANP).
+De los 101 pacientes que pasan más de 7 días con NP, se excluyen del cálculo 17 registros que no contienen al menos el 50% de los datos en alguno de los controles (día 7 o alta). De los 84 restantes, 75 (89,29%, IC 80,16-94,68) cumplen los criterios de Disfunción Hepática Asociada a la Nutrición Parenteral (DHANP). 
 
-La inclusión de pacientes con registros incompletos tiende a infraestimar la incidencia de DHANP (75,25% de los casos).
+Cabe destacar que la inclusión de pacientes con registros incompletos tiende a infraestimar la incidencia de DHANP. Por otro lado, si se aplica una corrección para tener en cuenta los casos que ya presentaban DHANP al inicio de la NP, la incidencia acumulada es de 20 casos de 80 (25%, IC 16.28-36.15).
 
 ```{r}
 # ---- I12. Disfunción hepática asociada a la NP ----
 
 # Variables de análisis
+vars_1 <- c("FALCALI1", "GAMGT1", "FILIRUB1", "GOT1", "GPT1", "INR1")
+vars_3 <- c("FALCALI3", "GAMGT3", "FILIRUB3", "GOT3", "GPT3", "INR3")
 vars_7 <- c("FALCALI7", "GAMGT7", "FILIRUB7", "GOT7", "GPT7", "INR7")
 vars_a <- c("FALCALIA", "GAMGTA", "FILIRUBA", "GOTA", "GPTA", "INRA")
 
 datos_dhanp <- datos %>%
-  # 1. Filtrado de pacientes que reciben NPT durante al menos 7 días
-  filter(TOTALNPT22 >= 7) %>%
+  # 1. Filtrado de pacientes que reciben TN durante al menos 7 días
+  filter(TOTALNPT22 >= 7 | (TOTALNE2 >= 7 & TIPO_SN_Grupo == 1)) %>%
   
-  # 2. Gestión de valores faltantes
+  # 2. Grupos de TN
+  mutate(
+    Grupo_TN = if_else(TIPO_SN_Grupo == 1, "NE", "NP")
+  ) %>%
+  
+  # 3. Gestión de valores faltantes
   rowwise() %>%
   mutate(
     faltantes_7 = sum(is.na(c_across(all_of(vars_7)))),
     faltantes_a = sum(is.na(c_across(all_of(vars_a)))),
     
     reg_ok = case_when(
-      TIPO_SN_Grupo %in% c(2, 4) ~ (faltantes_7 <= 3 | faltantes_a <= 3),
+      TIPO_SN_Grupo %in% c(1, 2, 4) ~ (faltantes_7 <= 3 | faltantes_a <= 3),
       TIPO_SN_Grupo == 3 ~ (faltantes_a <= 3),
       TRUE ~ FALSE
     )
   ) %>%
   ungroup() %>%
   
-  # 3. Filtro de calidad
+  # 4. Filtro de calidad
   filter(reg_ok == TRUE) %>%
   
-  # 4. Pacientes con disfunción hepática según grupo
+  # 5. Pacientes con disfunción hepática según día y grupo
   mutate(
     Colestasis = case_when(
-      TIPO_SN_Grupo %in% c(2, 4) ~ 
-        (FALCALI7 > 280 | GAMGT7 > 50 | FILIRUB7 > 1.2 |
-           FALCALIA > 280 | GAMGTA > 50 | FILIRUBA > 1.2) %in% TRUE,
+      # Si no tiene ninguna analítica = NA
+      TIPO_SN_Grupo %in% c(1, 2, 4) &
+        is.na(FALCALI7) & is.na(GAMGT7) & is.na(FILIRUB7) &
+        is.na(FALCALIA) & is.na(GAMGTA) & is.na(FILIRUBA) ~ NA,
+      !TIPO_SN_Grupo %in% c(1, 2, 4) &
+        is.na(FALCALIA) & is.na(GAMGTA) & is.na(FILIRUBA) ~ NA,
+      
+      # Criterio clínico según el grupo
+      TIPO_SN_Grupo %in% c(1, 2, 4) ~
+        coalesce(FALCALI7 > 280, FALSE) | coalesce(GAMGT7 > 50, FALSE) |
+        coalesce(FILIRUB7 > 1.2, FALSE) | coalesce(FALCALIA > 280, FALSE) |
+        coalesce(GAMGTA > 50, FALSE) | coalesce(FILIRUBA > 1.2, FALSE),
       TRUE ~ 
-        (FALCALIA > 280 | GAMGTA > 50 | FILIRUBA > 1.2) %in% TRUE
+        coalesce(FALCALIA > 280, FALSE) | coalesce(GAMGTA > 50, FALSE) |
+        coalesce(FILIRUBA > 1.2, FALSE)
     ),
     
     Colestasis_d1 = case_when(
       is.na(FALCALI1) & is.na(GAMGT1) & is.na(FILIRUB1) ~ NA,
-      (FALCALI1 > 280 | GAMGT1 > 50 | FILIRUB1 > 1.2) %in% TRUE ~ TRUE,
+      
+      coalesce(FALCALI1 > 280, FALSE) | coalesce(GAMGT1 > 50, FALSE) |
+        coalesce(FILIRUB1 > 1.2, FALSE) ~ TRUE,
       TRUE ~ FALSE
     ),
     
     Necrosis = case_when(
-      TIPO_SN_Grupo %in% c(2, 4) ~
-        (((GOT7 > 40 | GPT7 > 42) & (FILIRUB7 > 1.2 | INR7 > 1.4)) |
-        ((GOTA > 40 | GPTA > 42) & (FILIRUBA > 1.2 | INRA > 1.4))) %in% TRUE,
+      TIPO_SN_Grupo %in% c(1, 2, 4) &
+        is.na(GOT7) & is.na(GPT7) & is.na(FILIRUB7) & is.na(INR7) &
+        is.na(GOTA) & is.na(GPTA) & is.na(FILIRUBA) & is.na(INRA) ~ NA,
+      !TIPO_SN_Grupo %in% c(1, 2, 4) &
+        is.na(GOTA) & is.na(GPTA) & is.na(FILIRUBA) & is.na(INRA) ~ NA,
+      
+      TIPO_SN_Grupo %in% c(1, 2, 4) ~
+        ((coalesce(GOT7 > 40, FALSE) | coalesce(GPT7 > 42, FALSE)) &
+           (coalesce(FILIRUB7 > 1.2, FALSE) | coalesce(INR7 > 1.4, FALSE))) |
+        ((coalesce(GOTA > 40, FALSE) | coalesce(GPTA > 42, FALSE)) &
+           (coalesce(FILIRUBA > 1.2, FALSE) | coalesce(INRA > 1.4, FALSE))),
       TRUE ~ 
-        ((GOTA > 40 | GPTA > 42) & (FILIRUBA > 1.2 | INRA > 1.4)) %in% TRUE
+        (coalesce(GOTA > 40, FALSE) | coalesce(GPTA > 42, FALSE)) &
+        (coalesce(FILIRUBA > 1.2, FALSE) | coalesce(INRA > 1.4, FALSE))
     ),
     
     Necrosis_d1 = case_when(
       is.na(GOT1) & is.na(GPT1) & is.na(FILIRUB1) & is.na(INR1) ~ NA,
-      ((GOT1 > 40 | GPT1 > 42) & (FILIRUB1 > 1.2 | INR1 > 1.4)) %in% TRUE ~ TRUE,
+      
+      (coalesce(GOT1 > 40, FALSE) | coalesce(GPT1 > 42, FALSE)) &
+        (coalesce(FILIRUB1 > 1.2, FALSE) | coalesce(INR1 > 1.4, FALSE)) ~ TRUE,
       TRUE ~ FALSE
     ),
     
-    Mixta = if_else(Colestasis & Necrosis, 1, 0),
+    Mixta = if_else(Colestasis & Necrosis, 1, 0, missing = NA_integer_),
     
-    DHANP = if_else(Colestasis | Necrosis, 1, 0),
+    DHANP = if_else(Colestasis | Necrosis, 1, 0, missing = NA_integer_),
     
-    DHANP_d1 = if_else(Colestasis_d1 | Necrosis_d1, 1, 0)
+    DHANP_d1 = if_else(Colestasis_d1 | Necrosis_d1, 1, 0, missing = NA_integer_)
   )
 
-rm(vars_7, vars_a)
+# Resumen de valores faltantes
+tabla_na <- datos_dhanp %>%
+  filter(TIPO_SN_Grupo != 1) %>%
+  
+  rowwise() %>%
+  mutate(
+    Total_NA = sum(is.na(c_across(all_of(c(vars_1, vars_3, vars_7, vars_a)))))
+  ) %>%
+  ungroup() %>%
+  
+  count(Total_NA, name = "Pacientes") %>%
+  mutate(
+    Porcentaje = round((Pacientes / sum(Pacientes)) * 100, 2),
+    Acumulado = round(cumsum((Pacientes / sum(Pacientes)) * 100), 2)
+  )
+
+rm(list = ls(pattern = "^vars"))
   
 # Cálculo del porcentaje y los IC
 resumen_i12a <- datos_dhanp %>%
+  filter(TIPO_SN_Grupo != 1) %>%
   summarise(
     Indicador = "12a. DHANP",
     Numerador = sum(DHANP == 1, na.rm = TRUE),
@@ -1374,7 +1438,7 @@ resumen_i12a <- datos_dhanp %>%
   )
 
 resumen_i12b <- datos_dhanp %>%
-  filter(!is.na(DHANP_d1)) %>%
+  filter(TIPO_SN_Grupo != 1, !is.na(DHANP_d1)) %>%
   summarise(
     Indicador = "12b. DHANP (con corrección)",
     Numerador = sum(DHANP == 1 & DHANP_d1 != 1, na.rm = TRUE),
@@ -1401,8 +1465,10 @@ No se incluyen los valores de significación estadística debido al elevado núm
 ```{r}
 # Diagrama de Venn
 plot_dhanp_venn <- list(
-  Colestasis = which(datos_dhanp$Colestasis == TRUE),
-  Necrosis = which(datos_dhanp$Necrosis == TRUE)
+  Colestasis = which(datos_dhanp$Colestasis == TRUE & 
+                       datos_dhanp$TIPO_SN_Grupo != 1),
+  Necrosis = which(datos_dhanp$Necrosis == TRUE & 
+                       datos_dhanp$TIPO_SN_Grupo != 1)
 ) %>%
   
   ggvenn(
@@ -1426,8 +1492,6 @@ plot_dhanp_venn <- list(
 
 plot_dhanp_venn
 
-# ¿Qué pasa con los valores faltantes?
-
 ```
 
 ```{r}
@@ -1440,19 +1504,22 @@ umbrales_dhanp <- data.frame(
 
 # Gráfico de distribuciones
 plot_dhanp_dist <- datos_dhanp %>%
-  # 1. Selección de columnas
+  # 1. Filtrado de pacientes
+  filter(TIPO_SN_Grupo != 1) %>%
+  
+  # 2. Selección de columnas
   select(starts_with(
     c("FALCALI", "GAMGT", "FILIRUB", "GOT", "GPT", "INR")
   )) %>%
   
-  # 2. onversión a formato largo para ggplot
+  # 3. Conversión a formato largo para ggplot
   pivot_longer(
     cols = everything(),
     names_to = "Clave",
     values_to = "Valor"
   )%>%
   
-  # 3. Recodificación
+  # 4. Recodificación
   mutate(
     Biomarcador = str_extract(Clave, "FALCALI|GAMGT|FILIRUB|GOT|GPT|INR"),
     Día = str_extract(Clave, "\\d+|A$"),
@@ -1465,22 +1532,22 @@ plot_dhanp_dist <- datos_dhanp %>%
                          "GPT" = "GPT (ALT)")
   ) %>%
   
-  # 4. Filtrado de valores faltantes
+  # 5. Filtrado de valores faltantes
   filter(!is.na(Valor)) %>%
   
-  # 5. Boxplots
+  # 6. Boxplots
   ggplot(aes(x = Día, y = Valor, fill = Día)) +
   geom_boxplot(alpha = 0.6, outlier.shape = NA) +
   geom_jitter(width = 0.15, alpha = 0.2, size = 0.8) +
   
-  # 5.1. Líneas de corte
+  # 6.1. Líneas de corte
   geom_hline(data = umbrales_dhanp, aes(yintercept = Corte),
              linetype = "dashed", color = "firebrick", linewidth = 0.8) +
   
-  # 5.2. Separación de gráficos por biomarcador
+  # 6.2. Separación de gráficos por biomarcador
   facet_wrap(~ Biomarcador, scales = "free_y", ncol = 3) +
   
-  # 5.3. Estética
+  # 6.3. Estética
   scale_y_log10() +
   scale_fill_viridis_d() +
   labs(
@@ -1501,6 +1568,53 @@ plot_dhanp_dist <- datos_dhanp %>%
 plot_dhanp_dist
 
 rm(umbrales_dhanp)
+
+```
+
+```{r}
+# Comparación entre NE y NP
+
+# 1. Datos basales
+n_d1 <- datos_dhanp %>% filter(!is.na(DHANP_d1))
+t_d1 <- table(n_d1$Grupo_TN, n_d1$DHANP_d1)
+p_d1 <- chisq.test(t_d1)$p.value
+
+# 2. Incidencia
+n_ev <- datos_dhanp %>% filter(DHANP_d1 == 0 & !is.na(DHANP))
+t_ev <- table(n_ev$Grupo_TN, n_ev$DHANP)
+p_ev <- chisq.test(t_ev)$p.value
+
+# 3. Tabla de comparación
+tabla_dhanp_comp <- data.frame(
+  Momento = c("Prevalencia basal", "Incidencia acumulada"),
+  
+  NE_pos = c(
+    paste0(t_d1[1, 2], " (", round(prop.table(t_d1, 1)[1, 2] * 100, 1), "%)"),
+    paste0(t_ev[1, 2], " (", round(prop.table(t_ev, 1)[1, 2] * 100, 1), "%)")
+  ),
+  NE_denom = c(sum(t_d1[1, ]), sum(t_ev[1, ])),
+  
+  NP_pos = c(
+    paste0(t_d1[2, 2], " (", round(prop.table(t_d1, 1)[2, 2] * 100, 1), "%)"),
+    paste0(t_ev[2, 2], " (", round(prop.table(t_ev, 1)[2, 2] * 100, 1), "%)")
+  ),
+  NP_denom = c(sum(t_d1[2, ]), sum(t_ev[2, ])),
+  
+  Valor_p = c(
+    sprintf("%.3f", p_d1),
+    sprintf("%.3f", p_ev)
+  )
+) %>%
+  
+  kable(
+    col.names = c("Evaluación", "NE", "Total NE", "NP", "Total NP", "Valor p"),
+    caption = "**Cumplimiento de criterios diagnósticos de DHANP**",
+    align = "lccccc"
+  )
+
+tabla_dhanp_comp
+
+rm(n_d1, t_d1, p_d1, n_ev, t_ev, p_ev)
 
 ```
 
@@ -1525,10 +1639,6 @@ tabla_indicadores <- bind_rows(
 tabla_indicadores
 
 rm(list = ls(pattern = "^resumen"))
-
-# Quins indicadors compleix cada pacient?
-
-# Outcomes: supervivència? estat als 28 dies?
 
 ```
 
