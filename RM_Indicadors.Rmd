@@ -61,6 +61,15 @@ if (!require("ggvenn")) {
 if (!require("viridisLite")) {
   install.packages("viridisLite")
 }
+if (!require("survival")) {
+  install.packages("survival")
+}
+if (!require("caret")) {
+  install.packages("caret")
+}
+if (!require("glmnet")) {
+  install.packages("glmnet")
+}
 
 ```
 
@@ -76,6 +85,11 @@ library(ggpubr)
 library(ggalluvial)
 library(ggvenn)
 library(viridisLite)
+
+# Análisis de supervivencia
+library(survival)
+library(caret)
+library(glmnet)
 
 
 ```
@@ -109,6 +123,8 @@ Se muestra también la comparación entre los grupos que inicialmente reciben nu
 Los grupos son heterogéneos ($p < 0,05$) en el caso del grupo diagnóstico al que pertenecen los pacientes, el valor del NUTRIC Score, el tiempo de estancia en la UCI y en el hospital y las necesidades de ventilación mecánica.
 
 ```{r}
+# ---- Caracterización de la muestra ----
+
 caracterizacion_muestra <- function(datos, comparar = NULL, excluir = NULL) {
   # 1. Selección de variables
   grupo_comp <- enquo(comparar)
@@ -121,8 +137,8 @@ caracterizacion_muestra <- function(datos, comparar = NULL, excluir = NULL) {
     "AIRC", "ACIRROSIS", "AINMUNO", "ANEOPLAS", "STATUS3", "APACHEII", "SOFA1",
     "NUTRIC_Score", "NUTRISCOR2", "HORASIN", "SN_Menos48h", "Kcal_14d",
     "gPROT_14d", "PCOMPLIG", "PVRGM100", "PDANE", "PCLOSTDIF", "PVOMITO",
-    "PBRONCOAS", "PISQUINT", "VM", "DIASVM", "INFRESP", "INFVIA", "DIAS_UCI",
-    "DIAS_HOSP", "MUERTO28"
+    "PBRONCOAS", "PISQUINT", "VM", "DIASVM", "NEC_NA", "TRR", "INFRESP",
+    "INFVIA", "DIAS_UCI", "DIAS_HOSP", "MUERTO28"
   )
   
   # 2. Exclusión de variables
@@ -143,8 +159,19 @@ caracterizacion_muestra <- function(datos, comparar = NULL, excluir = NULL) {
       "PVRGM100", "PDANE", "PCLOSTDIF", "PVOMITO", "PBRONCOAS", "PISQUINT"
     ),
     Resultados = c(
-      "VM", "DIASVM", "INFRESP", "INFVIA", "DIAS_UCI", "DIAS_HOSP", "MUERTO28"
+      "VM", "DIASVM", "NEC_NA", "TRR", "INFRESP", "INFVIA", "DIAS_UCI",
+      "DIAS_HOSP", "MUERTO28"
     )
+  )
+  
+  # 4. Etiquetas
+  lista_etiquetas <- list(
+    EDAD ~ "Edad (años)", 
+    SEXO ~ "Sexo (Mujer)", 
+    STATUS3 ~ "Grupo diagnóstico",
+    DIAS_UCI ~ "Estancia en UCI (días)", 
+    DIAS_HOSP ~ "Estancia en Hospital (días)", 
+    VM ~ "Ventilación Mecánica"
   )
   
   # 4. Preparación y limpieza de variables
@@ -185,9 +212,7 @@ caracterizacion_muestra <- function(datos, comparar = NULL, excluir = NULL) {
   if (length(vars_dicot) > 0) {
     for (v in vars_dicot) {
       lista_tipos[[v]] <- "dichotomous"
-      
-      valores <- na.omit(unique(datos[[v]]))
-      lista_valores[[v]] <- valores[2]
+      lista_valores[[v]] <- levels(datos[[v]])[2]
     }
   }
   
@@ -235,6 +260,8 @@ caracterizacion_muestra <- function(datos, comparar = NULL, excluir = NULL) {
     
     if (length(vars_bloque) == 0) next
     
+    etiquetas <- lista_etiquetas[names(lista_etiquetas) %in% vars_bloque]
+    
     st <- datos %>%
       select(any_of(vars_bloque), any_of(by_argument)) %>%
       tbl_summary(
@@ -243,6 +270,7 @@ caracterizacion_muestra <- function(datos, comparar = NULL, excluir = NULL) {
         type = lista_tipos,
         value = lista_valores,
         statistic = lista_stats,
+        label = etiquetas,
         digits = list(all_continuous() ~ 1)
       )
     
@@ -256,87 +284,30 @@ caracterizacion_muestra <- function(datos, comparar = NULL, excluir = NULL) {
   # 9. Tabla final
   tabla <- tbl_stack(subtablas, group_header = names(subtablas))
   
+  # 10. Estética
+  if (!is.null(by_argument)) {
+    tabla <- tabla %>%
+      modify_header(label = "**Variable**", p.value = "**Valor p**") %>%
+      modify_footnote(
+        all_stat_cols() ~ 
+          "Valores expresados como media ± DE, mediana [RIC] o n (%)"
+      )
+  } else {
+    tabla <- tabla %>%
+      modify_header(label = "**Variable**") %>%
+      modify_footnote(
+        all_stat_cols() ~ 
+          "Valores expresados como media ± DE, mediana [RIC] o n (%)"
+      )
+  }
+  
   return(tabla)
 }
 
+caracterizacion_muestra(datos)
+caracterizacion_muestra(datos, comparar = TIPO_SN_Grupo)
+caracterizacion_muestra(datos, comparar = NUTRISCOR2, excluir = "NUTRIC_Score")
 caracterizacion_muestra(datos, comparar = MUERTO28)
-
-
-
-tabla_muestra <- datos %>%
-  mutate(
-    SN = if_else(TIPO_SN_Grupo == 1, "NE", "NP")
-  ) %>%
-  
-  select(SN, EDAD, SEXO, BMI, STATUS3, NUTRIC_Score, DIAS_UCI, DIAS_HOSP,
-         TOTAL_DIAS_SN, VM, DIASVM, DIAS_HOSP, Estado28d) %>%
-  
-  mutate(
-    across(c(SEXO, STATUS3, Estado28d), ~ as_factor(.x)),
-    VM = as.character(VM),
-    
-    STATUS3 = case_match(
-      as.character(STATUS3),
-      "QUIRURGICO" ~ "Quirúrgico",
-      "MEDICO" ~ "Médico",
-      "TRAUMA" ~ "Traumático"
-    ),
-    
-    Estado28d = case_match(
-      as.character(Estado28d),
-      "Ingresado" ~ "Ingreso",
-      .default = as.character(Estado28d)
-    )
-  ) %>%
-  
-  tbl_summary(
-    by = SN,
-    missing = "no",
-    
-    type = list(
-      SEXO ~ "dichotomous",
-      VM ~ "dichotomous"
-    ),
-    
-    value = list(
-      SEXO ~ "Mujer",
-      VM ~ "1"
-    ),
-    
-    label = list(
-      SEXO ~ "Sexo (Mujer)",
-      STATUS3 ~ "Grupo diagnóstico",
-      DIAS_UCI ~ "Estancia en UCI (días)",
-      DIAS_HOSP ~ "Estancia en Hospital (días)",
-      VM ~ "Ventilación Mecánica",
-      Estado28d ~ "Estado a los 28 días de ingreso"
-    ),
-    
-    statistic = list(
-      all_continuous() ~ "{median} [{p25}, {p75}]",
-      all_categorical() ~ "{n} ({p}%)"
-    ),
-    
-    digits = list(all_continuous() ~ 1)
-  ) %>%
-  
-  add_overall(
-    last = FALSE, col_label = paste0("**Total** N = {N}")
-  ) %>%
-  add_p() %>%
-  
-  modify_header(
-    label = "**Variable**",
-    p.value = "**Valor p**"
-  ) %>%
-  
-  modify_footnote(
-    all_stat_cols() ~ 
-      "Valores expresados como mediana [RIC] o n (%)",
-    p.value ~ "Prueba de la suma de rangos de Wilcoxon; Prueba de Chi-cuadrado de Pearson; Prueba exacta de Fisher"
-  )
-
-tabla_muestra
 
 ```
 
@@ -1797,6 +1768,147 @@ tabla_indicadores
 rm(list = ls(pattern = "^resumen"))
 
 ```
+
+## Análisis de supervivencia
+
+```{r}
+# ---- Análisis de supervivencia ----
+
+# 1. Variables para el modelo y parámetros
+vars_cox <- c(
+  "EDAD", "SEXO", "BMI", "ALCOHOL", "AHTA", "AEPOC", "AINMUNO", "ANEOPLAS", 
+  "STATUS3", "APACHEII", "SOFA1", "NUTRIC_Score", "TIPO_SN_Grupo", "Kcal_14d", 
+  "gPROT_14d", "VM", "NEC_NA", "TRR"
+)
+
+datos_cox <- datos %>%
+  mutate(
+    t = if_else(DIAS_UCI > 28, 28, DIAS_UCI),
+    evento = as.numeric(MUERTO28),
+    
+    STATUS3 = factor(STATUS3, labels = c("QUIRURGICO", "MEDICO", "TRAUMA")),
+    TIPO_SN_Grupo = factor(TIPO_SN_Grupo, 
+                           labels = c("NE", "NPT", "NE_NPT", "NPT_NE"))
+  ) %>%
+  drop_na(any_of(c("t", "evento", vars_cox)))
+
+# 2. Sets de entrenamiento y test
+set.seed(827)
+
+index_train <- createDataPartition(datos_cox$evento, p = 0.7, list = FALSE)
+
+train_set <- datos_cox[index_train, ]
+test_set <- datos_cox[-index_train, ]
+
+# 3. LASSO
+x_train <- model.matrix(~ . -1, data = train_set[, vars_cox])
+y_train <- Surv(train_set$t, train_set$evento)
+
+# 4. Parámetro lambda
+cv_lasso <- cv.glmnet(x_train, y_train, family = "cox", alpha = 1)
+
+# 5. Variables seleccionadas
+coef(cv_lasso, s = "lambda.min")
+
+# 6. Evaluación del modelo
+x_test <- model.matrix(~ . -1, data = test_set[, vars_cox])
+
+riesgo_lasso <- 
+  predict(cv_lasso, newx = x_test, s = "lambda.min", type = "link")[, 1]
+
+# 7. C-Index
+eval_lasso <- coxph(Surv(t, evento) ~ riesgo_lasso, data = test_set)
+c_index_lasso <- summary(eval_lasso)$concordance[1]
+
+round(c_index_lasso, 3)
+
+# 8. Modelo de Cox
+coefs <- coef(cv_lasso, s = "lambda.min")
+vars_select <- rownames(coefs)[which(coefs != 0)]
+
+formula_cox <- as.formula(
+  "Surv(t, evento) ~ EDAD + BMI + ALCOHOL + AHTA + AEPOC + AINMUNO + ANEOPLAS +
+  STATUS3 + SOFA1 + NUTRIC_Score + TIPO_SN_Grupo + gPROT_14d + TRR"
+)
+
+fit_cox <- coxph(formula_cox, data = datos_cox)
+
+tabla_cox <- fit_cox %>%
+  tbl_regression(
+    exponentiate = TRUE
+  ) %>%
+  bold_p(t = 0.05) %>%
+  modify_header(label = "**Variable**", estimate = "**HR (IC 95%)**")
+
+tabla_cox
+
+```
+
+```{r}
+# ---- Análisis de supervivencia ----
+
+# 1. Variables para el modelo y parámetros
+vars_cox <- c(
+  "EDAD", "SEXO", "BMI", "ALCOHOL", "AHTA", "AEPOC", "AINMUNO", "ANEOPLAS", 
+  "STATUS3", "APACHEII", "SOFA1", "NUTRIC_Score", "TIPO_SN_Grupo", "Kcal_14d", 
+  "gPROT_14d", "VM", "NEC_NA", "TRR"
+)
+
+datos_cox <- datos %>%
+  mutate(
+    t = if_else(DIAS_UCI > 28, 28, DIAS_UCI),
+    evento = as.numeric(MUERTO28),
+    
+    STATUS3 = factor(STATUS3),
+    TIPO_SN_Grupo = factor(TIPO_SN_Grupo)
+  ) %>%
+  drop_na(any_of(c("t", "evento", vars_cox)))
+
+# 2. Sets de entrenamiento y test
+set.seed(827)
+
+index_train <- createDataPartition(datos_cox$evento, p = 0.7, list = FALSE)
+
+train_set <- datos_cox[index_train, ]
+test_set <- datos_cox[-index_train, ]
+
+# 3. Ajuste saturado con el set de entrenamiento
+formula <- as.formula(
+  paste("Surv(t, evento) ~", paste(vars_cox, collapse = " + "))
+)
+
+fit_train_full <- coxph(formula, data = train_set)
+
+# 4. Backwards stepwise selection
+fit_train_final <- step(fit_train_full, direction = "backward", 
+                        #trace = 0
+                        )
+
+# 5. Índice de riesgo para el test set
+riesgo_test <- predict(fit_train_final, newdata = test_set, type = "lp")
+
+# 6. C-Index
+eval_test <- concordance(fit_train_final, newdata = test_set)
+c_index_test <- eval_test$concordance
+
+round(c_index_test, 3)
+
+# 7. Modelo de Cox
+formula_final <- formula(fit_train_final)
+
+fit_cox_step <- coxph(formula_final, data = datos_cox)
+
+tabla_cox_step <- fit_cox_step %>%
+  tbl_regression(
+    exponentiate = TRUE
+  ) %>%
+  bold_p(t = 0.05) %>%
+  modify_header(label = "**Variable**", estimate = "**HR (IC 95%)**")
+
+tabla_cox_step
+
+```
+
 
 # Anexo. Código R
 
