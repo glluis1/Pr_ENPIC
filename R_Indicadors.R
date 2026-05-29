@@ -82,10 +82,3 @@ datos_comprobacion_grupos <- datos %>%
 datos_comprobacion_fechas <- datos %>%
   select(IDICOMEP, FECHAING, INGUCI, FINICNE2, FFINNE2, FINICNPT2, FFINNPT2) %>%
   filter(FINICNE2 < FECHAING | FINICNPT2 < FECHAING)
-
-# Corrección de errores
-datos$FINICNPT2[datos$IDICOMEP == 4007] <- 
-  datos$FINICNPT2[datos$IDICOMEP == 4007] - lubridate::years(90)
-
-datos$TIPO_SN_Grupo[datos$IDICOMEP == 34006] <- 3
-datos$TIPO_SN_Grupo[datos$IDICOMEP == 34007] <- 3

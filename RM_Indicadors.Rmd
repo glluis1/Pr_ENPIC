@@ -86,15 +86,17 @@ library(viridisLite)
 # Carga de datos
 datos <- read_sav("ENPIC_BMI_525.sav")
 
-# Valores faltantes
-datos <- datos %>% filter(!is.na(FINICNE2) | !is.na(FINICNPT2))
-
-# Corrección de errores
-datos$FINICNPT2[datos$IDICOMEP == 4007] <- 
-  datos$FINICNPT2[datos$IDICOMEP == 4007] - lubridate::years(90)
-
-datos$TIPO_SN_Grupo[datos$IDICOMEP == 34006] <- 3
-datos$TIPO_SN_Grupo[datos$IDICOMEP == 34007] <- 3
+# Exclusión de registros erróneos
+datos <- datos %>% 
+  filter(NUTRIC_Score <= 9 | is.na(NUTRIC_Score)) %>%
+  
+  # Corrección de errores
+  mutate(
+    FINICNPT2 = if_else(IDICOMEP == 4007, FINICNPT2 - years(90), FINICNPT2),
+    FFINNPT2 = if_else(IDICOMEP == 4007, FFINNPT2 - years(90), FFINNPT2),
+    
+    TIPO_SN_Grupo = if_else(IDICOMEP %in% c(34006, 34007), 3, TIPO_SN_Grupo)
+  )
 
 ```
 
@@ -107,6 +109,160 @@ Se muestra también la comparación entre los grupos que inicialmente reciben nu
 Los grupos son heterogéneos ($p < 0,05$) en el caso del grupo diagnóstico al que pertenecen los pacientes, el valor del NUTRIC Score, el tiempo de estancia en la UCI y en el hospital y las necesidades de ventilación mecánica.
 
 ```{r}
+caracterizacion_muestra <- function(datos, comparar = NULL, excluir = NULL) {
+  # 1. Selección de variables
+  grupo_comp <- enquo(comparar)
+  by_argument <- if (!rlang::quo_is_null(grupo_comp)) {
+    as_label(grupo_comp)
+  } else NULL
+  
+  variables <- c(
+    "EDAD", "SEXO", "BMI", "ALCOHOL", "AHTA", "ADBTM", "ACARDIOP", "AEPOC",
+    "AIRC", "ACIRROSIS", "AINMUNO", "ANEOPLAS", "STATUS3", "APACHEII", "SOFA1",
+    "NUTRIC_Score", "NUTRISCOR2", "HORASIN", "SN_Menos48h", "Kcal_14d",
+    "gPROT_14d", "PCOMPLIG", "PVRGM100", "PDANE", "PCLOSTDIF", "PVOMITO",
+    "PBRONCOAS", "PISQUINT", "VM", "DIASVM", "INFRESP", "INFVIA", "DIAS_UCI",
+    "DIAS_HOSP", "MUERTO28"
+  )
+  
+  # 2. Exclusión de variables
+  variables <- setdiff(variables, excluir)
+  if (!is.null(by_argument)) {
+    variables <- setdiff(variables, by_argument)
+  }
+  
+  # 3. Bloques
+  bloques <- list(
+    `Características basales y comorbilidades` = c(
+      "EDAD", "SEXO", "BMI", "ALCOHOL", "AHTA", "ADBTM", "ACARDIOP","AEPOC",
+      "AIRC", "ACIRROSIS", "AINMUNO", "ANEOPLAS", "STATUS3", "APACHEII",
+      "SOFA1", "NUTRIC_Score", "NUTRISCOR2"
+    ),
+    `Terapia nutricional` = c(
+      "HORASIN", "SN_Menos48h", "Kcal_14d", "gPROT_14d", "PCOMPLIG", 
+      "PVRGM100", "PDANE", "PCLOSTDIF", "PVOMITO", "PBRONCOAS", "PISQUINT"
+    ),
+    Resultados = c(
+      "VM", "DIASVM", "INFRESP", "INFVIA", "DIAS_UCI", "DIAS_HOSP", "MUERTO28"
+    )
+  )
+  
+  # 4. Preparación y limpieza de variables
+  datos <- datos %>%
+    mutate(
+      across(
+        everything(), ~ 
+          {if(inherits(.x, "haven_labelled")) haven::as_factor(.x) else .x}
+      )
+    ) %>%
+    mutate(
+      STATUS3 = factor(STATUS3),
+      
+      STATUS3 = recode_values(
+        as.character(STATUS3),
+        "QUIRURGICO" ~ "Quirúrgico",
+        "MEDICO" ~ "Médico",
+        "TRAUMA" ~ "Traumático"
+      )
+    ) %>%
+    
+    select(any_of(variables), any_of(by_argument))
+  
+  # 5. Gestión de variables dicotómicas
+  vars_dicot <- c()
+  
+  for (v in variables) {
+    valores_unicos <- na.omit(unique(datos[[v]]))
+    
+    if (length(valores_unicos) == 2) {
+      vars_dicot <- c(vars_dicot, v)
+    }
+  }
+  
+  lista_tipos <- list()
+  lista_valores <- list()
+  
+  if (length(vars_dicot) > 0) {
+    for (v in vars_dicot) {
+      lista_tipos[[v]] <- "dichotomous"
+      
+      valores <- na.omit(unique(datos[[v]]))
+      lista_valores[[v]] <- valores[2]
+    }
+  }
+  
+  # 6. Análisis de normalidad
+  vars_num <- datos %>% select(where(is.numeric)) %>% colnames()
+  vars_cont <- setdiff(vars_num, c(vars_dicot, by_argument))
+  
+  vars_norm <- c()
+  vars_no_norm <- c()
+  
+  for (v in vars_cont) {
+    valores <- na.omit(datos[[v]])
+    
+    if (length(valores) >= 3) {
+      if (shapiro.test(valores)$p.value >= 0.05) {
+        vars_norm <- c(vars_norm, v)
+      } else {
+        vars_no_norm <- c(vars_no_norm, v)
+      }
+    } else {
+      vars_no_norm <- c(vars_no_norm, v)
+    }
+  }
+  
+  # 7. Selección de formatos estadísticos
+  lista_stats <- list(all_categorical() ~ "{n} ({p}%)")
+  
+  if (length(vars_norm) > 0) {
+    for (v in vars_norm) {
+      lista_stats[[v]] <- "{mean} ± {sd}"
+    }
+  }
+  
+  if (length(vars_no_norm) > 0) {
+    for (v in vars_no_norm) {
+      lista_stats[[v]] <- "{median} [{p25}, {p75}]"
+    }
+  }
+  
+  # 8. Subtablas por bloque
+  subtablas <- list()
+  
+  for (nombre_bloque in names(bloques)) {
+    vars_bloque <- intersect(bloques[[nombre_bloque]], variables)
+    
+    if (length(vars_bloque) == 0) next
+    
+    st <- datos %>%
+      select(any_of(vars_bloque), any_of(by_argument)) %>%
+      tbl_summary(
+        by = any_of(by_argument),
+        missing = "no",
+        type = lista_tipos,
+        value = lista_valores,
+        statistic = lista_stats,
+        digits = list(all_continuous() ~ 1)
+      )
+    
+    if (!is.null(by_argument)) {
+      st <- st %>% add_p()
+    }
+    
+    subtablas[[nombre_bloque]] <- st
+  }
+  
+  # 9. Tabla final
+  tabla <- tbl_stack(subtablas, group_header = names(subtablas))
+  
+  return(tabla)
+}
+
+caracterizacion_muestra(datos, comparar = MUERTO28)
+
+
+
 tabla_muestra <- datos %>%
   mutate(
     SN = if_else(TIPO_SN_Grupo == 1, "NE", "NP")
