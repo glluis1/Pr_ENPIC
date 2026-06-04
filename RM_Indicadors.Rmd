@@ -50,6 +50,8 @@ paquetes <- c("haven", "tidyverse", "nortest", "rstatix", "gtsummary",
 
 install_if_not(paquetes)
 
+rm(paquetes)
+
 ```
 
 ```{r}
@@ -118,54 +120,89 @@ Los grupos son heterogéneos ($p < 0,05$) en el caso del grupo diagnóstico al q
 ```{r}
 # ---- Caracterización de la muestra ----
 
+#' Title
+#' 
+#' @description
+#' Texto
+#'
+#' @param datos 
+#' @param comparar 
+#' @param excluir 
+#'
+#' @returns
+#' 
+#' @importFrom
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Ejemplo de uso con datos hipotéticos
+#' caracterizacion_muestra(datos, comparar = "SOFA1", excluir = "SOFA_Cat")
+#' }
 caracterizacion_muestra <- function(datos, comparar = NULL, excluir = NULL) {
   # 1. Selección de variables
-  grupo_comp <- enquo(comparar)
-  by_argument <- if (!rlang::quo_is_null(grupo_comp)) {
-    as_label(grupo_comp)
-  } else NULL
-  
   variables <- c(
     "EDAD", "SEXO", "BMI", "ALCOHOL", "AHTA", "ADBTM", "ACARDIOP", "AEPOC",
     "AIRC", "ACIRROSIS", "AINMUNO", "ANEOPLAS", "STATUS3", "APACHEII", "SOFA1",
-    "NUTRIC_Score", "NUTRISCOR2", "HORASIN", "TIPO_SN_Grupo", "SN_Menos48h", 
-    "TOTAL_DIAS_SN", "Kcal_14d", "gPROT_14d", "PCOMPLIG", "PVRGM100", "PDANE", 
-    "PCLOSTDIF", "PVOMITO", "PBRONCOAS", "PISQUINT", "VM", "DIASVM", "NEC_NA", 
-    "TRR", "INFRESP", "INFVIA", "DIAS_UCI", "DIAS_HOSP", "MUERTO28"
+    "VGSING2", "NUTRIC_Score", "NUTRISCOR2", "HORASIN", "TIPO_SN_Grupo", 
+    "SN_Menos48h", "TOTAL_DIAS_SN", "Kcal_14d", "gPROT_14d", "PCOMPLIG", 
+    "PVRGM100", "PDANE", "PCLOSTDIF", "PVOMITO", "PBRONCOAS", "PISQUINT", "VM",
+    "DIASVM", "NEC_NA", "TRR", "INFRESP", "INFVIA", "DIAS_UCI", "DIAS_HOSP", 
+    "MUERTO28"
   )
   
-  # 2. Exclusión de variables
-  variables <- setdiff(variables, excluir)
-  if (!is.null(by_argument)) {
-    variables <- setdiff(variables, by_argument)
-  }
+  variables <- setdiff(variables, c(comparar, excluir))
   
-  # 3. Bloques
+  # 2. Bloques
   bloques <- list(
-    `Características basales y comorbilidades` = c(
-      "EDAD", "SEXO", "BMI", "ALCOHOL", "AHTA", "ADBTM", "ACARDIOP","AEPOC",
-      "AIRC", "ACIRROSIS", "AINMUNO", "ANEOPLAS", "STATUS3", "APACHEII",
-      "SOFA1", "NUTRIC_Score", "NUTRISCOR2"
-    ),
-    `Terapia nutricional` = c(
-      "HORASIN", "TIPO_SN_Grupo", "SN_Menos48h", "TOTAL_DIAS_SN", "Kcal_14d", 
-      "gPROT_14d", "PCOMPLIG", "PVRGM100", "PDANE", "PCLOSTDIF", "PVOMITO", 
-      "PBRONCOAS", "PISQUINT"
-    ),
-    Resultados = c(
-      "VM", "DIASVM", "NEC_NA", "TRR", "INFRESP", "INFVIA", "DIAS_UCI",
-      "DIAS_HOSP", "MUERTO28"
-    )
+    `Características basales` = c("EDAD", "SEXO", "BMI", "STATUS3"),
+    Comorbilidades = c("ALCOHOL", "AHTA", "ADBTM", "ACARDIOP", "AEPOC",
+                       "AIRC", "ACIRROSIS", "AINMUNO", "ANEOPLAS"),
+    `Estado nutricional` = c("APACHEII", "SOFA1", "VGSING2", 
+                             "NUTRIC_Score", "NUTRISCOR2"),
+    `Terapia nutricional` = c("HORASIN", "TIPO_SN_Grupo", "SN_Menos48h", 
+                              "TOTAL_DIAS_SN", "Kcal_14d", "gPROT_14d"),
+    `Complicaciones gástricas` = c("PCOMPLIG", "PVRGM100", "PDANE", "PCLOSTDIF",
+                                   "PVOMITO", "PBRONCOAS", "PISQUINT"),
+    Resultados = c("VM", "DIASVM", "NEC_NA", "TRR", "INFRESP", "INFVIA",
+                   "DIAS_UCI", "DIAS_HOSP", "MUERTO28")
   )
   
-  # 4. Etiquetas
+  # 3. Etiquetas
   lista_etiquetas <- list(
-    EDAD ~ "Edad (años)", 
-    SEXO ~ "Sexo (Mujer)", 
-    STATUS3 ~ "Grupo diagnóstico",
-    DIAS_UCI ~ "Estancia en UCI (días)", 
-    DIAS_HOSP ~ "Estancia en Hospital (días)", 
-    VM ~ "Ventilación Mecánica"
+    EDAD = "Edad (años)", 
+    SEXO = "Sexo (Mujer)", 
+    BMI = "IMC",
+    ALCOHOL = "Enolismo",
+    AHTA = "HTA",
+    ADBTM = "Diabetes mellitus",
+    ACARDIOP = "IAM",
+    AEPOC = "EPOC",
+    AIRC = "Insuficiencia renal crónica",
+    ACIRROSIS = "Cirrosis hepática",
+    AINMUNO = "Inmunosupresión",
+    ANEOPLAS = "Neoplasia",
+    STATUS3 = "Grupo diagnóstico",
+    APACHEII = "APACHE II",
+    SOFA1 = "SOFA (al ingreso)",
+    VGSING2 = "Malnutrición (VGS)",
+    NUTRIC_Score = "NUTRIC Score",
+    NUTRISCOR2 = "Riesgo nutricional (NUTRIC Score)",
+    HORASIN = "Tiempo hasta Soporte Nutricional (h)",
+    SN_Menos48h = "Soporte Nutricional precoz (<48h)",
+    Kcal_14d = "Media de kcal/kg/día",
+    gPROT_14d = "Media de g proteína/kg/día",
+    PCOMPLIG = "Cualquier complicación",
+    PVRGM100 = "VRG aumentado",
+    PDANE = "Diarrea",
+    PCLOSTDIF = "Clostridium difficile",
+    PVOMITO = "Vómito",
+    PBRONCOAS = "Broncoaspiración",
+    PISQUINT = "Isquemia mesentérica",
+    VM = "Ventilación Mecánica",
+    TRR = "Necesidad de TRR",
+    DIAS_UCI = "Estancia en UCI (días)", 
+    DIAS_HOSP = "Estancia en Hospital (días)"
   )
   
   # 4. Preparación y limpieza de variables
@@ -177,42 +214,34 @@ caracterizacion_muestra <- function(datos, comparar = NULL, excluir = NULL) {
       )
     ) %>%
     mutate(
-      STATUS3 = factor(STATUS3),
-      
-      STATUS3 = recode_values(
-        as.character(STATUS3),
-        "QUIRURGICO" ~ "Quirúrgico",
-        "MEDICO" ~ "Médico",
-        "TRAUMA" ~ "Traumático"
+      STATUS3 = case_when(
+        STATUS3 == "QUIRURGICO" ~ "Quirúrgico",
+        STATUS3 == "MEDICO" ~ "Médico",
+        STATUS3 == "TRAUMA" ~ "Traumático"
       )
     ) %>%
-    
-    select(any_of(variables), any_of(by_argument))
+    select(any_of(variables), any_of(comparar))
   
   # 5. Gestión de variables dicotómicas
   vars_dicot <- c()
-  
-  for (v in variables) {
-    valores_unicos <- na.omit(unique(datos[[v]]))
-    
-    if (length(valores_unicos) == 2) {
-      vars_dicot <- c(vars_dicot, v)
-    }
-  }
-  
   lista_tipos <- list()
   lista_valores <- list()
   
-  if (length(vars_dicot) > 0) {
-    for (v in vars_dicot) {
-      lista_tipos[[v]] <- "dichotomous"
-      lista_valores[[v]] <- levels(datos[[v]])[2]
+  for (v in variables) {
+    if (v %in% colnames(datos)){
+      valores_unicos <- na.omit(unique(datos[[v]]))
+      
+      if (length(valores_unicos) == 2) {
+        vars_dicot <- c(vars_dicot, v)
+        lista_tipos[[v]] <- "dichotomous"
+        lista_valores[[v]] <- levels(datos[[v]])[2]
+      }
     }
   }
   
   # 6. Análisis de normalidad
   vars_num <- datos %>% select(where(is.numeric)) %>% colnames()
-  vars_cont <- setdiff(vars_num, c(vars_dicot, by_argument))
+  vars_cont <- setdiff(vars_num, c(vars_dicot, comparar))
   
   vars_norm <- c()
   vars_no_norm <- c()
@@ -220,7 +249,7 @@ caracterizacion_muestra <- function(datos, comparar = NULL, excluir = NULL) {
   for (v in vars_cont) {
     valores <- na.omit(datos[[v]])
     
-    if (length(valores) >= 3) {
+    if (length(valores) >= 5) {
       if (lillie.test(valores)$p.value >= 0.05) {
         vars_norm <- c(vars_norm, v)
       } else {
@@ -254,22 +283,22 @@ caracterizacion_muestra <- function(datos, comparar = NULL, excluir = NULL) {
     
     if (length(vars_bloque) == 0) next
     
-    etiquetas <- lista_etiquetas[names(lista_etiquetas) %in% vars_bloque]
-    
     st <- datos %>%
-      select(any_of(vars_bloque), any_of(by_argument)) %>%
+      select(any_of(vars_bloque), any_of(comparar)) %>%
       tbl_summary(
-        by = any_of(by_argument),
+        by = any_of(comparar),
         missing = "no",
         type = lista_tipos,
         value = lista_valores,
         statistic = lista_stats,
-        label = etiquetas,
+        label = lista_etiquetas,
         digits = list(all_continuous() ~ 1)
       )
     
-    if (!is.null(by_argument)) {
-      st <- st %>% add_p()
+    if (!is.null(comparar)) {
+      st <- st %>% 
+        add_p() %>% 
+        bold_p(t = 0.05)
     }
     
     subtablas[[nombre_bloque]] <- st
@@ -279,29 +308,24 @@ caracterizacion_muestra <- function(datos, comparar = NULL, excluir = NULL) {
   tabla <- tbl_stack(subtablas, group_header = names(subtablas))
   
   # 10. Estética
-  if (!is.null(by_argument)) {
+  tabla <- tabla %>%
+    modify_header(label = "**Variable**") %>%
+    modify_footnote(
+      all_stat_cols() ~ 
+        "Valores expresados como media ± DE, mediana [RIC] o n (%)"
+    ) %>%
+    bold_labels()
+  
+  if (!is.null(comparar)) {
     tabla <- tabla %>%
-      modify_header(label = "**Variable**", p.value = "**Valor p**") %>%
-      modify_footnote(
-        all_stat_cols() ~ 
-          "Valores expresados como media ± DE, mediana [RIC] o n (%)"
-      )
-  } else {
-    tabla <- tabla %>%
-      modify_header(label = "**Variable**") %>%
-      modify_footnote(
-        all_stat_cols() ~ 
-          "Valores expresados como media ± DE, mediana [RIC] o n (%)"
-      )
+      modify_header(p.value = "**Valor p**")
   }
   
   return(tabla)
 }
 
 caracterizacion_muestra(datos)
-caracterizacion_muestra(datos, comparar = TIPO_SN_Grupo)
-caracterizacion_muestra(datos, comparar = NUTRISCOR2, excluir = "NUTRIC_Score")
-caracterizacion_muestra(datos, comparar = MUERTO28)
+caracterizacion_muestra(datos, comparar = "NUTRISCOR2", excluir = "NUTRIC_Score")
 
 ```
 
