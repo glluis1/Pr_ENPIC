@@ -30,46 +30,25 @@ Sys.setlocale("LC_TIME", "C")
 
 ```
 
-# Resultados
-
-Los resultados de los indicadores se presentan como porcentajes e intervalos de confianza (IC) al 95%. Cuando el estándar de referencia es el 100%, no tiene sentido realizar contrastes de hipótesis porque, al comparar con el objetivo ideal, siempre se obtendrá significación. Para el resto de tests estadísticos, se indicará también el valor $p$. Se considera que existe significación estadística si $p < 0,05$.
-
 ```{r}
 # ---- Instalación de paquetes ----
 
-if (!require("haven")) {
-  install.packages("haven")
+# Función para instalar paquetes de una lista
+install_if_not <- function(pkg) {
+  for (p in pkg) {
+    if (!requireNamespace(p, quietly = TRUE)) {
+      install.packages(p, dependencies = TRUE)
+    }
+  }
 }
-if (!require("tidyverse")) {
-  install.packages("tidyverse")
-}
-if (!require("rstatix")) {
-  install.packages("rstatix")
-}
-if (!require("gtsummary")) {
-  install.packages("gtsummary")
-}
-if (!require("ggpubr")) {
-  install.packages("ggpubr")
-}
-if (!require("ggalluvial")) {
-  install.packages("ggalluvial")
-}
-if (!require("ggvenn")) {
-  install.packages("ggvenn")
-}
-if (!require("viridisLite")) {
-  install.packages("viridisLite")
-}
-if (!require("survival")) {
-  install.packages("survival")
-}
-if (!require("caret")) {
-  install.packages("caret")
-}
-if (!require("glmnet")) {
-  install.packages("glmnet")
-}
+
+# Lista de paquetes e instalación
+paquetes <- c("haven", "tidyverse", "nortest", "rstatix", "gtsummary", 
+              "ggpubr", "ggalluvial", "ggvenn", "viridisLite", 
+              "survival", "survminer", "caret", "glmnet"
+)
+
+install_if_not(paquetes)
 
 ```
 
@@ -79,6 +58,7 @@ library(haven)
 library(tidyverse)
 
 # Estadística y gráficos
+library(nortest)
 library(rstatix)
 library(gtsummary)
 library(ggpubr)
@@ -88,11 +68,24 @@ library(viridisLite)
 
 # Análisis de supervivencia
 library(survival)
+library(survminer)
 library(caret)
 library(glmnet)
 
 
 ```
+
+# Material y métodos
+
+## Análisis estadístico
+
+Los datos se expresan como medias y desviaciones estándar (DE), medianas [rango intercuartil (RIC)] o números y porcentajes, según sea adecuado. Para las comparaciones entre dos grupos se han usado pruebas $t$ de Student y $U$ de Mann_whitney, así como pruebas $\chi^2$ o tests exactos para la evaluación de las variables categóricas. En el caso de las comparaciones entre más de dos grupos, se ha utilizado análisis de la varianza (ANOVA, por su acrónimo en inglés) con correcciones *post-hoc* o la prueba de Kruskal-Wallis.
+
+En todos los casos, se ha evaluado la normalidad de la distribución muestral mediante la prueba de Kolmogórov-Smirnov. El análisis de supervivencia se ha llevado a cabo utilizando el estimador de Kaplan-Meier para cada subgrupo. En el análisis multivariante subsiguiente se ha empleado un modelo escalonado (*stepwise*) bidireccional de regresión de Cox para evaluar la mortalidad a los 28 días.
+
+# Resultados
+
+Los resultados de los indicadores se presentan como porcentajes e intervalos de confianza (IC) al 95%. Cuando el estándar de referencia es el 100%, no tiene sentido realizar contrastes de hipótesis porque, al comparar con el objetivo ideal, siempre se obtendrá significación. Para el resto de tests estadísticos, se indicará también el valor $p$. Se considera que existe significación estadística si $p < 0,05$.
 
 ```{r}
 # ---- Preparación de los datos ----
@@ -135,10 +128,10 @@ caracterizacion_muestra <- function(datos, comparar = NULL, excluir = NULL) {
   variables <- c(
     "EDAD", "SEXO", "BMI", "ALCOHOL", "AHTA", "ADBTM", "ACARDIOP", "AEPOC",
     "AIRC", "ACIRROSIS", "AINMUNO", "ANEOPLAS", "STATUS3", "APACHEII", "SOFA1",
-    "NUTRIC_Score", "NUTRISCOR2", "HORASIN", "SN_Menos48h", "Kcal_14d",
-    "gPROT_14d", "PCOMPLIG", "PVRGM100", "PDANE", "PCLOSTDIF", "PVOMITO",
-    "PBRONCOAS", "PISQUINT", "VM", "DIASVM", "NEC_NA", "TRR", "INFRESP",
-    "INFVIA", "DIAS_UCI", "DIAS_HOSP", "MUERTO28"
+    "NUTRIC_Score", "NUTRISCOR2", "HORASIN", "TIPO_SN_Grupo", "SN_Menos48h", 
+    "TOTAL_DIAS_SN", "Kcal_14d", "gPROT_14d", "PCOMPLIG", "PVRGM100", "PDANE", 
+    "PCLOSTDIF", "PVOMITO", "PBRONCOAS", "PISQUINT", "VM", "DIASVM", "NEC_NA", 
+    "TRR", "INFRESP", "INFVIA", "DIAS_UCI", "DIAS_HOSP", "MUERTO28"
   )
   
   # 2. Exclusión de variables
@@ -155,8 +148,9 @@ caracterizacion_muestra <- function(datos, comparar = NULL, excluir = NULL) {
       "SOFA1", "NUTRIC_Score", "NUTRISCOR2"
     ),
     `Terapia nutricional` = c(
-      "HORASIN", "SN_Menos48h", "Kcal_14d", "gPROT_14d", "PCOMPLIG", 
-      "PVRGM100", "PDANE", "PCLOSTDIF", "PVOMITO", "PBRONCOAS", "PISQUINT"
+      "HORASIN", "TIPO_SN_Grupo", "SN_Menos48h", "TOTAL_DIAS_SN", "Kcal_14d", 
+      "gPROT_14d", "PCOMPLIG", "PVRGM100", "PDANE", "PCLOSTDIF", "PVOMITO", 
+      "PBRONCOAS", "PISQUINT"
     ),
     Resultados = c(
       "VM", "DIASVM", "NEC_NA", "TRR", "INFRESP", "INFVIA", "DIAS_UCI",
@@ -227,7 +221,7 @@ caracterizacion_muestra <- function(datos, comparar = NULL, excluir = NULL) {
     valores <- na.omit(datos[[v]])
     
     if (length(valores) >= 3) {
-      if (shapiro.test(valores)$p.value >= 0.05) {
+      if (lillie.test(valores)$p.value >= 0.05) {
         vars_norm <- c(vars_norm, v)
       } else {
         vars_no_norm <- c(vars_no_norm, v)
@@ -311,8 +305,9 @@ caracterizacion_muestra(datos, comparar = MUERTO28)
 
 ```
 
+## Análisis de indicadores de calidad
 
-## Identificación de enfermos en riesgo nutricional (100%)
+### Identificación de enfermos en riesgo nutricional (100%)
 
 Todos los pacientes incluidos en el estudio tuvieron una estancia en la UCI superior a 48h. Se ha excluido del cálculo 1 registro que contenía datos erróneos.
 
@@ -365,7 +360,7 @@ plot_nutric
 
 ```
 
-## Valoración del estado nutricional (100%)
+### Valoración del estado nutricional (100%)
 
 Se realizó la valoración del estado nutricional en 232 de los 232 pacientes con riesgo nutricional (100%, IC 97,97-100). Es necesario tener en cuenta, no obstante, que existen 16 casos en los que no se pudo objetivar el riesgo nutricional mediante el NUTRIC Score y que, por este motivo, no se han incluido en el cálculo.
 
@@ -391,7 +386,7 @@ resumen_i2 <- datos %>%
 
 ```
 
-## Adecuación del aporte calórico y proteico del soporte nutricional (\>80%)
+### Adecuación del aporte calórico y proteico del soporte nutricional (\>80%)
 
 Para el cálculo de los indicadores, en los casos en los que el índice de masa corporal (IMC) es superior a 30, se utiliza el peso ajustado para los cálculos. Este se puede calcular a partir de las siguientes fórmulas @singer2019:
 
@@ -413,21 +408,47 @@ datos <- datos %>%
     # 2. Peso a utilizar según IMC
     Peso_calculo = if_else(BMI < 30, PESOACT, Peso_ajustado),
     
-    # 3. Media del aporte calórico los 3 primeros días
-    Media_cal_aguda = 
-      rowMeans(pick(num_range("CALORIA", 1:3)), na.rm = TRUE) / Peso_calculo,
+    # 3. Días totales por fase
+    Dias_cal_aguda = rowSums(!is.na(pick(num_range("CALORIA", 1:3)))),
+    Dias_prot_aguda = rowSums(!is.na(pick(num_range("PROT", 1:3)))),
+    Dias_cal_estable = rowSums(!is.na(pick(num_range("CALORIA", 4:14)))),
+    Dias_prot_estable = rowSums(!is.na(pick(num_range("PROT", 4:14)))),
     
-    # 4. Media del aporte calórico a partir del 4º día
-    Media_cal_estable = 
-      rowMeans(pick(num_range("CALORIA", 4:14)), na.rm = TRUE) / Peso_calculo,
+    # 4. Aporte nutricional acumulado
+    Suma_cal_aguda = 
+      rowSums(pick(num_range("CALORIA", 1:3)), na.rm = TRUE) / Peso_calculo,
+    Suma_prot_aguda = 
+      rowSums(pick(num_range("PROT", 1:3)), na.rm = TRUE) / Peso_calculo,
+    Suma_cal_estable = 
+      rowSums(pick(num_range("CALORIA", 4:14)), na.rm = TRUE) / Peso_calculo,
+    Suma_prot_estable = 
+      rowSums(pick(num_range("PROT", 4:14)), na.rm = TRUE) / Peso_calculo,
     
-    # 3. Media del aporte proteico los 3 primeros días
-    Media_prot_aguda = 
-      rowMeans(pick(num_range("PROT", 1:3)), na.rm = TRUE) / Peso_calculo,
+    # 5. Media de aporte nutricional
+    Media_cal_aguda = if_else(
+      Dias_cal_aguda > 0, Suma_cal_aguda / Dias_cal_aguda, NA_real_
+    ),
+    Media_prot_aguda = if_else(
+      Dias_prot_aguda > 0, Suma_prot_aguda / Dias_prot_aguda, NA_real_
+    ),
+    Media_cal_estable = if_else(
+      Dias_cal_estable > 0, Suma_cal_estable / Dias_cal_estable, NA_real_
+    ),
+    Media_prot_estable = if_else(
+      Dias_prot_estable > 0, Suma_prot_estable / Dias_prot_estable, NA_real_
+    ),
     
-    # 4. Media del aporte proteico a partir del 4º día
-    Media_prot_estable = 
-      rowMeans(pick(num_range("PROT", 4:14)), na.rm = TRUE) / Peso_calculo
+    # 6. Cálculo del objetivo nutricional total
+    Obj_cal = (15 * Dias_cal_aguda) + (25 * Dias_cal_estable),
+    Obj_prot = (0.8 * Dias_prot_aguda) + (1.3 * Dias_prot_estable),
+    
+    # 7. Adecuación al objetivo nutricional
+    Adecuacion_obj_cal = if_else(
+      Obj_cal > 0, (Suma_cal_aguda + Suma_cal_estable) / Obj_cal, NA_real_
+    ),
+    Adecuacion_obj_prot = if_else(
+      Obj_prot > 0, (Suma_prot_aguda + Suma_prot_estable) / Obj_prot, NA_real_
+    )
   )
 
 # Aporte calórico
@@ -438,8 +459,8 @@ resumen_i4_cal <- datos %>%
   # 2. Cálculo del porcentaje y los IC
   summarise(
     Indicador = "4a. Aporte calórico",
-    Numerador = sum(Media_cal_estable >= 20 & Media_cal_estable <= (1.1 * 30), 
-                    na.rm = TRUE),
+    Numerador = sum(Media_cal_estable >= (0.8 * 25) & 
+                      Media_cal_estable <= (1.1 * 30), na.rm = TRUE),
     Denominador = n(),
     `Resultado (%)` = round((Numerador / Denominador) * 100, 2),
     `IC 95% (inf – sup)` = 
@@ -1135,7 +1156,7 @@ plot_evol
 
 ```
 
-## Nutrición enteral precoz (100%)
+### Nutrición enteral precoz (100%)
 
 El nivel de adherencia en este caso es notable: 279 de 375 pacientes (74,4%, IC 69,61-78,68) reciben nutrición enteral (NE) durante las primeras 48h de evolución.
 
@@ -1161,7 +1182,7 @@ resumen_i6 <- datos %>%
 
 ```
 
-## Uso adecuado de nutrición parenteral total (\>90%)
+### Uso adecuado de nutrición parenteral total (\>90%)
 
 Existe indicación de nutrición parenteral total (NPT) en 132 de los 193 pacientes (68,39%, IC 61,26-74,78) que reciben NPT.
 
@@ -1187,7 +1208,7 @@ resumen_i7 <- datos %>%
 
 ```
 
-## Adecuación temporal del inicio de la nutrición parenteral complementaria (\>90%)
+### Adecuación temporal del inicio de la nutrición parenteral complementaria (\>90%)
 
 Solo 10 de 163 pacientes (6,13%, IC 3,15-11,30) con NE que al 4º día no alcanzan al menos el 60% de los requerimientos nutricionales (15 kcal/kg/día y 0,8 g/kg/día) reciben nutrición parenteral complementaria (NPC) durante las 24 horas posteriores a la detección.
 
@@ -1285,7 +1306,7 @@ plot_npc
 
 ```
 
-## Monitorización de la nutrición enteral (100%)
+### Monitorización de la nutrición enteral (100%)
 
 La monitorización de la NE es correcta en 101 de los 444 que reciben NE (22,75%, IC 18,99-26,99).
 
@@ -1430,7 +1451,7 @@ plot_monitorizacion
 
 ```
 
-## Definición Disfunción Hepática Asociada a la Nutrición Parenteral (\<20%)
+### Definición Disfunción Hepática Asociada a la Nutrición Parenteral (\<20%)
 
 De los 101 pacientes que pasan más de 7 días con NP, se excluyen del cálculo 17 registros que no contienen al menos el 50% de los datos en alguno de los controles (día 7 o alta). De los 84 restantes, 75 (89,29%, IC 80,16-94,68) cumplen los criterios de Disfunción Hepática Asociada a la Nutrición Parenteral (DHANP). 
 
@@ -1745,7 +1766,7 @@ rm(n_d1, t_d1, p_d1, n_ev, t_ev, p_ev)
 
 ```
 
-## Resumen de indicadores
+### Resumen de indicadores
 
 ```{r}
 # ---- Tabla resumen ----
@@ -1771,14 +1792,24 @@ rm(list = ls(pattern = "^resumen"))
 
 ## Análisis de supervivencia
 
+### Análisis univariante
+
 ```{r}
-# ---- Análisis de supervivencia ----
+# ---- Análisis de supervivencia (univariante) ----
+
+
+```
+
+### Análisis multivariante
+
+```{r}
+# ---- Análisis de supervivencia (multivariante) ----
 
 # 1. Variables para el modelo y parámetros
 vars_cox <- c(
-  "EDAD", "SEXO", "BMI", "ALCOHOL", "AHTA", "AEPOC", "AINMUNO", "ANEOPLAS", 
-  "STATUS3", "APACHEII", "SOFA1", "NUTRIC_Score", "TIPO_SN_Grupo", "Kcal_14d", 
-  "gPROT_14d", "VM", "NEC_NA", "TRR"
+  "EDAD", "ALCOHOL", "AHTA", "AEPOC", "AIRC", "AINMUNO", "ANEOPLAS", 
+  "STATUS3", "APACHEII", "SOFA1", "NUTRIC_Score", "TIPO_SN_Grupo", 
+  "gPROT_14d", "VM", "NEC_NA", "TRR", "INFVIA"
 )
 
 datos_cox <- datos %>%
@@ -1788,79 +1819,15 @@ datos_cox <- datos %>%
     
     STATUS3 = factor(STATUS3, labels = c("QUIRURGICO", "MEDICO", "TRAUMA")),
     TIPO_SN_Grupo = factor(TIPO_SN_Grupo, 
-                           labels = c("NE", "NPT", "NE_NPT", "NPT_NE"))
-  ) %>%
-  drop_na(any_of(c("t", "evento", vars_cox)))
-
-# 2. Sets de entrenamiento y test
-set.seed(827)
-
-index_train <- createDataPartition(datos_cox$evento, p = 0.7, list = FALSE)
-
-train_set <- datos_cox[index_train, ]
-test_set <- datos_cox[-index_train, ]
-
-# 3. LASSO
-x_train <- model.matrix(~ . -1, data = train_set[, vars_cox])
-y_train <- Surv(train_set$t, train_set$evento)
-
-# 4. Parámetro lambda
-cv_lasso <- cv.glmnet(x_train, y_train, family = "cox", alpha = 1)
-
-# 5. Variables seleccionadas
-coef(cv_lasso, s = "lambda.min")
-
-# 6. Evaluación del modelo
-x_test <- model.matrix(~ . -1, data = test_set[, vars_cox])
-
-riesgo_lasso <- 
-  predict(cv_lasso, newx = x_test, s = "lambda.min", type = "link")[, 1]
-
-# 7. C-Index
-eval_lasso <- coxph(Surv(t, evento) ~ riesgo_lasso, data = test_set)
-c_index_lasso <- summary(eval_lasso)$concordance[1]
-
-round(c_index_lasso, 3)
-
-# 8. Modelo de Cox
-coefs <- coef(cv_lasso, s = "lambda.min")
-vars_select <- rownames(coefs)[which(coefs != 0)]
-
-formula_cox <- as.formula(
-  "Surv(t, evento) ~ EDAD + BMI + ALCOHOL + AHTA + AEPOC + AINMUNO + ANEOPLAS +
-  STATUS3 + SOFA1 + NUTRIC_Score + TIPO_SN_Grupo + gPROT_14d + TRR"
-)
-
-fit_cox <- coxph(formula_cox, data = datos_cox)
-
-tabla_cox <- fit_cox %>%
-  tbl_regression(
-    exponentiate = TRUE
-  ) %>%
-  bold_p(t = 0.05) %>%
-  modify_header(label = "**Variable**", estimate = "**HR (IC 95%)**")
-
-tabla_cox
-
-```
-
-```{r}
-# ---- Análisis de supervivencia ----
-
-# 1. Variables para el modelo y parámetros
-vars_cox <- c(
-  "EDAD", "SEXO", "BMI", "ALCOHOL", "AHTA", "AEPOC", "AINMUNO", "ANEOPLAS", 
-  "STATUS3", "APACHEII", "SOFA1", "NUTRIC_Score", "TIPO_SN_Grupo", "Kcal_14d", 
-  "gPROT_14d", "VM", "NEC_NA", "TRR"
-)
-
-datos_cox <- datos %>%
-  mutate(
-    t = if_else(DIAS_UCI > 28, 28, DIAS_UCI),
-    evento = as.numeric(MUERTO28),
+                           labels = c("NE", "NPT", "NE_NPT", "NPT_NE")),
     
-    STATUS3 = factor(STATUS3),
-    TIPO_SN_Grupo = factor(TIPO_SN_Grupo)
+    EDAD = scale(EDAD, center = TRUE, scale = FALSE),
+    BMI = scale(BMI, center = TRUE, scale = FALSE),
+    APACHEII = scale(APACHEII, center = TRUE, scale = FALSE),
+    SOFA1 = scale(SOFA1, center = TRUE, scale = FALSE),
+    NUTRIC_Score = scale(NUTRIC_Score, center = TRUE, scale = FALSE),
+    Kcal_14d = scale(Kcal_14d, center = TRUE, scale = FALSE),
+    gPROT_14d = scale(gPROT_14d, center = TRUE, scale = FALSE)
   ) %>%
   drop_na(any_of(c("t", "evento", vars_cox)))
 
@@ -1872,20 +1839,22 @@ index_train <- createDataPartition(datos_cox$evento, p = 0.7, list = FALSE)
 train_set <- datos_cox[index_train, ]
 test_set <- datos_cox[-index_train, ]
 
-# 3. Ajuste saturado con el set de entrenamiento
-formula <- as.formula(
+# 3. Ajuste mínimo con el set de entrenamiento
+fit_train_0 <- coxph(Surv(t, evento) ~ 1, data = train_set)
+
+# 4. Ajuste saturado con el set de entrenamiento
+formula_full <- as.formula(
   paste("Surv(t, evento) ~", paste(vars_cox, collapse = " + "))
 )
 
-fit_train_full <- coxph(formula, data = train_set)
+fit_train_full <- coxph(formula_full, data = train_set)
 
-# 4. Backwards stepwise selection
-fit_train_final <- step(fit_train_full, direction = "backward", 
-                        #trace = 0
-                        )
-
-# 5. Índice de riesgo para el test set
-riesgo_test <- predict(fit_train_final, newdata = test_set, type = "lp")
+# 5. Multiple stepwise selection
+fit_train_final <- step(
+  fit_train_full, 
+  direction = "backward"
+  #trace = 0
+)
 
 # 6. C-Index
 eval_test <- concordance(fit_train_final, newdata = test_set)
@@ -1896,19 +1865,27 @@ round(c_index_test, 3)
 # 7. Modelo de Cox
 formula_final <- formula(fit_train_final)
 
-fit_cox_step <- coxph(formula_final, data = datos_cox)
+fit_cox <- coxph(formula_final, data = datos_cox)
 
-tabla_cox_step <- fit_cox_step %>%
+tabla_cox <- fit_cox %>%
   tbl_regression(
     exponentiate = TRUE
   ) %>%
   bold_p(t = 0.05) %>%
-  modify_header(label = "**Variable**", estimate = "**HR (IC 95%)**")
+  modify_header(label = "**Variable**")
 
-tabla_cox_step
+tabla_cox
+
+# 8. Diagnóstico del modelo
+test_ph <- cox.zph(fit_cox)
+test_ph
+
+ggcoxzph(test_ph)
+
+ggcoxdiagnostics(fit_cox, type = "deviance", linear.predictions = FALSE)
+ggcoxdiagnostics(fit_cox, type = "dfbeta", linear.predictions = FALSE)
 
 ```
-
 
 # Anexo. Código R
 
