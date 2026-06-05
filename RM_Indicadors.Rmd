@@ -1252,7 +1252,7 @@ resumen_i8 <- datos_npc %>%
 En las tablas se muestra la distribución por grupos de aporte calórico y proteico al 4º día. Para el cálculo del indicador, se han tenido en cuenta los pacientes que no llegan al 60% de los requerimientos en al menos uno de los casos.
 
 ```{r}
-# Aporte nutricional en el 4º día en NE
+# Aporte calórico en el 4º día en NE
 tabla_cal_4 <- datos %>%
   filter(TIPO_SN_Grupo %in% c(1, 3), !is.na(CALORIA4), !is.na(PROT4)) %>%
   
@@ -1262,6 +1262,7 @@ tabla_cal_4 <- datos %>%
   
   analisis_aporte(CALORIA4, 25, 30, "Aporte calórico día 4 (kcal/kg/día)")
 
+# Aporte proteico en el 4º día en NE
 tabla_prot_4 <- datos %>%
   filter(TIPO_SN_Grupo %in% c(1, 3), !is.na(CALORIA4), !is.na(PROT4)) %>%
   
@@ -1270,9 +1271,6 @@ tabla_prot_4 <- datos %>%
   ) %>%
   
   analisis_aporte(PROT4, 1.3, 1.5, "Aporte proteico día 4 (g/kg/día)")
-
-tabla_cal_4
-tabla_prot_4
 
 ```
 
@@ -1301,8 +1299,6 @@ plot_npc <- ggplot(datos_npc, aes(x = dias_npc)) +
     plot.title = element_text(face = "bold"),
     legend.position = "bottom"
   )
-
-plot_npc
 
 ```
 
@@ -1387,7 +1383,7 @@ datos_monitorizacion <- datos %>%
   # 4. Resumen de la monitorización
   mutate(
     Monitorizacion = if_else(
-      Reg_comp == 1 & Reg_trig  & Reg_col  & Reg_alb  & Reg_prealb  & Reg_perf,
+      Reg_comp == 1 & Reg_trig & Reg_col & Reg_alb & Reg_prealb & Reg_perf,
       1, 0, missing = 0
     )
   )
@@ -1447,8 +1443,6 @@ plot_monitorizacion <- datos_monitorizacion %>%
             hjust = -0.2, size = 3.5, fontface = "bold") +
   ylim(0, 115)
 
-plot_monitorizacion
-
 ```
 
 ### Definición Disfunción Hepática Asociada a la Nutrición Parenteral (\<20%)
@@ -1476,10 +1470,9 @@ datos_dhanp <- datos %>%
   ) %>%
   
   # 3. Gestión de valores faltantes
-  rowwise() %>%
   mutate(
-    faltantes_7 = sum(is.na(c_across(all_of(vars_7)))),
-    faltantes_a = sum(is.na(c_across(all_of(vars_a)))),
+    faltantes_7 = rowSums(is.na(pick(all_of(vars_7)))),
+    faltantes_a = rowSums(is.na(pick(all_of(vars_a)))),
     
     reg_ok = case_when(
       TIPO_SN_Grupo %in% c(1, 2, 4) ~ (faltantes_7 <= 3 | faltantes_a <= 3),
@@ -1487,7 +1480,6 @@ datos_dhanp <- datos %>%
       TRUE ~ FALSE
     )
   ) %>%
-  ungroup() %>%
   
   # 4. Filtro de calidad
   filter(reg_ok == TRUE) %>%
@@ -1556,11 +1548,9 @@ datos_dhanp <- datos %>%
 tabla_na <- datos_dhanp %>%
   filter(TIPO_SN_Grupo != 1) %>%
   
-  rowwise() %>%
   mutate(
-    Total_NA = sum(is.na(c_across(all_of(c(vars_1, vars_3, vars_7, vars_a)))))
+    Total_NA = rowSums(is.na(pick(all_of(c(vars_1, vars_3, vars_7, vars_a)))))
   ) %>%
-  ungroup() %>%
   
   count(Total_NA, name = "Pacientes") %>%
   mutate(
@@ -1586,10 +1576,10 @@ resumen_i12a <- datos_dhanp %>%
   )
 
 resumen_i12b <- datos_dhanp %>%
-  filter(TIPO_SN_Grupo != 1, !is.na(DHANP_d1)) %>%
+  filter(TIPO_SN_Grupo != 1, DHANP_d1 != 1) %>%
   summarise(
     Indicador = "12b. DHANP (con corrección)",
-    Numerador = sum(DHANP == 1 & DHANP_d1 != 1, na.rm = TRUE),
+    Numerador = sum(DHANP == 1, na.rm = TRUE),
     Denominador = n(),
     `Resultado (%)` = round((Numerador / Denominador) * 100, 2),
     `IC 95% (inf – sup)` = 
@@ -1637,8 +1627,6 @@ plot_dhanp_venn <- list(
     plot.title = element_text(face = "bold"),
     legend.position = "none"
   )
-
-plot_dhanp_venn
 
 ```
 
@@ -1713,8 +1701,6 @@ plot_dhanp_dist <- datos_dhanp %>%
     strip.text = element_text(face = "bold")
   )
 
-plot_dhanp_dist
-
 rm(umbrales_dhanp)
 
 ```
@@ -1760,8 +1746,6 @@ tabla_dhanp_comp <- data.frame(
     align = "lccccc"
   )
 
-tabla_dhanp_comp
-
 rm(n_d1, t_d1, p_d1, n_ev, t_ev, p_ev)
 
 ```
@@ -1769,7 +1753,7 @@ rm(n_d1, t_d1, p_d1, n_ev, t_ev, p_ev)
 ### Resumen de indicadores
 
 ```{r}
-# ---- Tabla resumen ----
+# ---- Tabla resumen de indicadores ----
 
 tabla_indicadores <- bind_rows(
   resumen_i1, resumen_i2, resumen_i4, resumen_i6,
