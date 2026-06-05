@@ -31,9 +31,25 @@ Sys.setlocale("LC_TIME", "C")
 ```
 
 ```{r}
-# ---- Instalación de paquetes ----
+# ---- PAQUETES Y LIBRERÍAS ----
 
-# Función para instalar paquetes de una lista
+#' Instalación de paquetes
+#' 
+#' @description
+#' Comprueba si los paquetes de una lista están instalados en el sistema. Si alguno no lo está, lo instala automáticamente.
+#'
+#' @param pkg Vector de caracteres con los nombres de los paquetes.
+#'
+#' @returns No devuelve ningún valor.
+#' 
+#' @importFrom utils install.packages
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Ejemplo de uso con datos hipotéticos
+#' install_if_not(paquetes)
+#' }
 install_if_not <- function(pkg) {
   for (p in pkg) {
     if (!requireNamespace(p, quietly = TRUE)) {
@@ -90,13 +106,13 @@ En todos los casos, se ha evaluado la normalidad de la distribución muestral me
 Los resultados de los indicadores se presentan como porcentajes e intervalos de confianza (IC) al 95%. Cuando el estándar de referencia es el 100%, no tiene sentido realizar contrastes de hipótesis porque, al comparar con el objetivo ideal, siempre se obtendrá significación. Para el resto de tests estadísticos, se indicará también el valor $p$. Se considera que existe significación estadística si $p < 0,05$.
 
 ```{r}
-# ---- Preparación de los datos ----
+# ---- PREPARACIÓN DE LOS DATOS ----
 
 # Carga de datos
 datos <- read_sav("ENPIC_BMI_525.sav")
 
-# Exclusión de registros erróneos
 datos <- datos %>% 
+  # Exclusión de registros erróneos
   filter(NUTRIC_Score <= 9 | is.na(NUTRIC_Score)) %>%
   
   # Corrección de errores
@@ -118,25 +134,30 @@ Se muestra también la comparación entre los grupos que inicialmente reciben nu
 Los grupos son heterogéneos ($p < 0,05$) en el caso del grupo diagnóstico al que pertenecen los pacientes, el valor del NUTRIC Score, el tiempo de estancia en la UCI y en el hospital y las necesidades de ventilación mecánica.
 
 ```{r}
-# ---- Caracterización de la muestra ----
+# ---- RESULTADOS ----
 
-#' Title
+#' Caracterización de la muestra
 #' 
 #' @description
-#' Texto
+#' Crea una tabla automatizada con los datos expresados en función del tipo de variable y de su distribución.
 #'
-#' @param datos 
-#' @param comparar 
-#' @param excluir 
+#' @param datos Un \code{data.frame} o \code{tibble} que contiene los datos.
+#' @param comparar Cadena de texto (opcional). El nombre de la variable de comparación.
+#' @param excluir Cadena de texto (opcional). Los nombres de las variables a excluir.
 #'
-#' @returns
+#' @returns Un objeto \code{tbl_stack}.
 #' 
-#' @importFrom
+#' @importFrom dplyr %>% mutate across everything select case_when any_of where colnames setdiff intersect
+#' @importFrom gtsummary tbl_summary modify_table_styling add_p bold_p tbl_stack modify_header modify_footnote all_categorical all_continuous all_stat_cols
+#' @importFrom nortest lillie.test
+#' @importFrom stats na.omit levels as.formula
+#' @importFrom haven as_factor
 #' @export
 #'
 #' @examples
 #' \dontrun{
 #' # Ejemplo de uso con datos hipotéticos
+#' caracterizacion_muestra(datos)
 #' caracterizacion_muestra(datos, comparar = "SOFA1", excluir = "SOFA_Cat")
 #' }
 caracterizacion_muestra <- function(datos, comparar = NULL, excluir = NULL) {
@@ -324,8 +345,8 @@ caracterizacion_muestra <- function(datos, comparar = NULL, excluir = NULL) {
   return(tabla)
 }
 
-caracterizacion_muestra(datos)
-caracterizacion_muestra(datos, comparar = "NUTRISCOR2", excluir = "NUTRIC_Score")
+tabla_muestra <- caracterizacion_muestra(datos)
+tabla_muestra
 
 ```
 
@@ -344,10 +365,7 @@ resumen_i1 <- datos %>%
   # 1. Filtrado de pacientes con estancia > 48 h
   filter(DIASUCI >= 2) %>% # Todos
   
-  # 2. Gestión de registros erróneos
-  filter(NUTRIC_Score <= 9 | is.na(NUTRIC_Score)) %>%
-  
-  # 3. Cálculo del porcentaje y los IC
+  # 2. Cálculo del porcentaje y los IC
   summarise(
     Indicador = "1. Riesgo nutricional",
     Numerador = sum(!is.na(NUTRIC_Score)),
@@ -362,7 +380,6 @@ resumen_i1 <- datos %>%
 
 # Gráfico de barras
 plot_nutric <- datos %>%
-  filter(!is.na(NUTRIC_Score), NUTRIC_Score <= 9) %>%
   mutate(Riesgo = if_else(NUTRIC_Score >= 5, "Alto", "Bajo")) %>%
   
   ggplot(aes(x = as.factor(NUTRIC_Score), fill = Riesgo)) +
@@ -380,8 +397,6 @@ plot_nutric <- datos %>%
     legend.position = "bottom"
   )
 
-plot_nutric
-
 ```
 
 ### Valoración del estado nutricional (100%)
@@ -393,7 +408,7 @@ Se realizó la valoración del estado nutricional en 232 de los 232 pacientes co
 
 resumen_i2 <- datos %>%
   # 1. Filtrado de pacientes con riesgo nutricional (NUTRIC Score > 5)
-  filter(NUTRIC_Score >= 5, NUTRIC_Score <= 9) %>%
+  filter(NUTRIC_Score >= 5) %>%
   
   # 2. Cálculo del porcentaje y los IC
   summarise(
@@ -535,7 +550,7 @@ De los pacientes que no cumplen los requerimientos de aporte calórico, 136 (26,
 #' aparecerá en el título de la tabla. Por defecto es "variable".
 #'
 #' @returns Una tabla objeto \code{knitr_kable} con el resumen de fercuencias
-#' y porcentajes por categoría
+#' y porcentajes por categoría.
 #' 
 #' @importFrom dplyr %>% filter mutate case_when group_by summarise n
 #' @importFrom knitr kable
@@ -609,11 +624,6 @@ tabla_prot_estable <- analisis_aporte(
   datos = datos, columna = Media_prot_estable, valor_inf = 1.3, valor_sup = 1.5,
   etiqueta = "Aporte proteico en fase estable (g/kg/día)"
 )
-
-tabla_cal_aguda
-tabla_cal_estable
-tabla_prot_aguda
-tabla_prot_estable
 
 ```
 
@@ -753,14 +763,8 @@ progresion_aporte <- function(datos, categoria, comparar = FALSE) {
 }
 
 # Gráficos
-plot_calorias <- progresion_aporte(datos = datos, categoria = "CALORIA")
-plot_proteinas <- progresion_aporte(datos = datos, categoria = "PROT")
-
 plot_comp_cal <- progresion_aporte(datos, "CALORIA", comparar = TRUE)
 plot_comp_prot <- progresion_aporte(datos, "PROT", comparar = TRUE)
-
-plot_comp_cal
-plot_comp_prot
 
 ```
 
@@ -866,67 +870,46 @@ comparacion_aporte <- function(datos, categoria) {
 tabla_comp_cal <- comparacion_aporte(datos, "CALORIA")
 tabla_comp_prot <- comparacion_aporte(datos, "PROT")
 
-tabla_comp_cal
-tabla_comp_prot
-
 ```
 
 En cuanto a la distribución de días dentro de los rangos teóricos de aporte nutricional, el porcentaje de días en rango por paciente va del 0 al 100% en ambos grupos. Aunque se aprecia una ligera tendencia a la baja en el grupo de riesgo bajo, esta no es estadísticamente significativa.
 
 ```{r}
-# Días dentro del rango objetivo (calorías)
+# Días dentro del rango objetivo
 datos <- datos %>%
-  rowwise %>%
   mutate(
-    # Días con datos (no NA)
-    n_dias_cal = sum(!is.na(c_across(CALORIA4:CALORIA14))),
-    
-    # Días dentro del rango
-    n_dias_rango_cal = sum(
-      (c_across(CALORIA4:CALORIA14) / Peso_calculo) >= 20 &
-        (c_across(CALORIA4:CALORIA14) / Peso_calculo) <= (1.1 * 30),
+    # Días totales dentro del rango
+    Dias_rango_cal = rowSums(
+      (pick(num_range("CALORIA", 4:14)) / Peso_calculo) >= (0.8 * 25) &
+        (pick(num_range("CALORIA", 4:14)) / Peso_calculo) <= (1.1 * 30),
+      na.rm = TRUE
+    ),
+    Dias_rango_prot = rowSums(
+      (pick(num_range("PROT", 4:14)) / Peso_calculo) >= (0.8 * 1.3) &
+        (pick(num_range("PROT", 4:14)) / Peso_calculo) <= (1.1 * 1.5),
       na.rm = TRUE
     ),
     
     # Porcentaje de cumplimiento
-    cumplimiento_cal = if_else(n_dias_cal > 0,
-                           (n_dias_rango_cal / n_dias_cal) * 100,
-                           NA_real_)
-  ) %>%
-  ungroup()
-
-# Días dentro del rango objetivo (proteínas)
-datos <- datos %>% 
-  rowwise %>%
-  mutate(
-    # Días con datos (no NA)
-    n_dias_prot = sum(!is.na(c_across(PROT4:PROT14))),
-    
-    # Días dentro del rango
-    n_dias_rango_prot = sum(
-      (c_across(PROT4:PROT14) / Peso_calculo) >= (0.8 * 1.3) &
-        (c_across(PROT4:PROT14) / Peso_calculo) <= (1.1 * 1.5),
-      na.rm = TRUE
-    ),
-    
-    # Porcentaje de cumplimiento
-    cumplimiento_prot = if_else(n_dias_prot > 0,
-                           (n_dias_rango_prot / n_dias_prot) * 100,
-                           NA_real_)
-  ) %>%
-  ungroup()
+    Cumplimiento_cal = if_else(Dias_cal_estable > 0,
+                               (Dias_rango_cal / Dias_cal_estable) * 100,
+                               NA_real_),
+    Cumplimiento_prot = if_else(Dias_prot_estable > 0,
+                                (Dias_rango_prot / Dias_prot_estable) * 100,
+                                NA_real_)
+  )
 
 # Boxplot
 plot_cumplimiento <- datos %>%
-  # Selección de columnas
-  select(NUTRISCOR2, cumplimiento_cal, cumplimiento_prot) %>%
+  # 1. Selección de columnas
+  select(NUTRISCOR2, Cumplimiento_cal, Cumplimiento_prot) %>%
   
-  # Conversión a formato largo
-  pivot_longer(cols = c(cumplimiento_cal, cumplimiento_prot),
+  # 2. Conversión a formato largo
+  pivot_longer(cols = c(Cumplimiento_cal, Cumplimiento_prot),
                names_to = "Indicador",
                values_to = "Porcentaje") %>%
   
-  # Recodificación
+  # 3. Recodificación
   mutate(
     NUTRISCOR2 = factor(NUTRISCOR2,
                         levels = c(0, 1),
@@ -934,14 +917,14 @@ plot_cumplimiento <- datos %>%
   ) %>%
   mutate(
     Indicador = recode(Indicador,
-                       "cumplimiento_cal" = "Calorías",
-                       "cumplimiento_prot" = "Proteínas")
+                       "Cumplimiento_cal" = "Calorías",
+                       "Cumplimiento_prot" = "Proteínas")
   ) %>%
   
-  # Filtraje de valores faltantes
+  # 4. Filtraje de valores faltantes
   filter(!is.na(Porcentaje), !is.na(NUTRISCOR2)) %>%
   
-  # Gráfico
+  # 5. Gráfico
   ggplot(aes(x = Indicador, y = Porcentaje, fill = NUTRISCOR2)) +
   geom_violin(alpha = 0.3, position = position_dodge(width = 0.8), color = NA) +
   geom_boxplot(
@@ -953,11 +936,11 @@ plot_cumplimiento <- datos %>%
     alpha = 0.2, size = 0.8
   ) +
   
-  # Estética
+  # 5.1. Estética
   scale_fill_viridis_d() +
   scale_color_viridis_d() +
   labs(
-    title = "Distribución del aporte nutricional según riesgo nutricional",
+    title = "Distribución del aporte nutricional según riesgo",
     subtitle = "Fase estable (días 4-14)",
     y = "% de días en rango por paciente",
     x = "",
@@ -970,10 +953,8 @@ plot_cumplimiento <- datos %>%
     legend.position = "bottom"
   ) +
   
-  # Valor p del test U
+  # 5.2. Valor p del test U
   stat_compare_means(method = "wilcox.test", label = "p.format")
-
-plot_cumplimiento
 
 ```
 
@@ -1086,9 +1067,6 @@ grupos_aporte <- function (datos, categoria, valor_ag, valor_es) {
 tabla_evol_cal <- grupos_aporte(datos, "CALORIA", 15, 25)
 tabla_evol_prot <- grupos_aporte(datos, "PROT", 0.8, 1.3)
 
-tabla_evol_cal
-tabla_evol_prot
-
 ```
 
 ```{r}
@@ -1175,8 +1153,6 @@ plot_evol <- datos %>%
     axis.text.x = element_text(size = 11, face = "bold", color = "black"),
     legend.position = "none"
   )
-
-plot_evol
 
 ```
 
