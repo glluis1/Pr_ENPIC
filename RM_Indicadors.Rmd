@@ -1781,6 +1781,126 @@ rm(list = ls(pattern = "^resumen"))
 ```{r}
 # ---- Análisis de supervivencia (univariante) ----
 
+# Variables para el análisis
+vars_cox <- c(
+  "EDAD", "SEXO", "ALCOHOL", "AHTA", "AEPOC", "AIRC", "AINMUNO", "ANEOPLAS", 
+  "STATUS3", "APACHEII", "SOFA1", "NUTRIC_Score", "TIPO_SN_Grupo", 
+  "gPROT_14d", "VM", "NEC_NA", "TRR", "INFVIA"
+)
+
+# Datos para el análisis
+datos_cox <- datos %>%
+  # 1. Filtrado de datos con valores faltantes
+  filter(Dias_cal_aguda == 3 & Dias_prot_aguda == 3) %>%
+  filter(Dias_cal_estable > 0 & Dias_prot_estable > 0) %>%
+  
+  # 2. Transformación de variables
+  mutate(
+    # 2.1. Variables del objeto Surv()
+    t = if_else(DIAS_UCI > 28, 28, DIAS_UCI),
+    evento = as.numeric(MUERTO28),
+    
+    # Variables relacionadas con los indicadores
+    NUTRISCOR2 = factor(NUTRISCOR2, labels = c("Bajo", "Alto")),
+    VGSING2 = as_factor(VGSING2),
+    Grupo_cal = factor(
+      if_else(Adecuacion_obj_cal < 0.8, 0, 1),
+      levels = c(0, 1),
+      labels = c("Insuficiente (<80%)", "Adecuado (≥80%)")
+    ),
+    Grupo_prot = factor(
+      if_else(Adecuacion_obj_prot < 0.8, 0, 1),
+      levels = c(0, 1),
+      labels = c("Insuficiente (<80%)", "Adecuado (≥80%)")
+    ),
+    SN_Menos48h = factor(SN_Menos48h, labels = c("No", "Sí")),
+    
+    # Covariables
+  )
+
+```
+
+```{r}
+#' Comparación de curvas de supervivencia
+#' 
+#' @description
+#' Genera un gráfico de curvas de supervivencia de Kaplan-Meier con el valor p del log-rank test.
+#'
+#' @param datos Un \code{data.frame} o \code{tibble} que contiene los datos.
+#' @param tiempo Cadena de texto. Nombre de la columna de tiempo.
+#' @param estado Cadena de texto. Nombre de la columna de estado.
+#' @param grupo Cadena de texto. Nombre de la variable de estratificación.
+#' @param subtitulo Cadena de texto (opcional). Subtítulo del gráfico.
+#'
+#' @returns Un objeto \code{ggsurvplot} con el gráfico de supervivencia.
+#' 
+#' @importFrom dplyr %>% mutate
+#' @importFrom rlang .data
+#' @importFrom haven as_factor
+#' @importFrom survival Surv survfit
+#' @importFrom survminer ggsurvplot
+#' @importFrom viridis viridis
+#' @importFrom ggplot2 theme_minimal labs theme element_text
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Ejemplo de uso con datos hipotéticos
+#' grafico_km(datos, "t", "estado", "sexo", "Comparación por sexo")
+#' }
+grafico_km <- function(datos, tiempo, estado, grupo, subtitulo = NULL) {
+  # 1. Conversión de datos
+  datos <- datos %>%
+    mutate(
+      var_grupo = as_factor(.data[[grupo]])
+    )
+  
+  # 2. Ajuste del estimador
+  formula_fit <- as.formula(
+    paste0("Surv(", tiempo, ", ", estado, ") ~ var_grupo")
+  )
+  
+  fit <- survfit(formula_fit, data = datos)
+  fit$call$formula <- formula_fit
+  
+  # 3. Grupos de comparación
+  n_grupos <- length(levels(datos$var_grupo))
+  
+  # 4. Curvas de supervivencia
+  plot_out <- ggsurvplot(
+    fit,
+    data = datos,
+    pval = TRUE,
+    conf.int = TRUE,
+    censor = FALSE,
+    xlim = c(0, 28),
+    break.time.by = 7,
+    palette = viridis(n_grupos),
+    title = "Curvas de supervivencia (Kaplan-Meier)",
+    xlab = "Tiempo en UCI (días)",
+    ylab = "Probabilidad de supervivencia",
+    legend.title = "",
+    legend.labs = levels(datos$var_grupo),
+    ggtheme = theme_minimal()
+  )
+  
+  plot_out$plot <- plot_out$plot +
+    labs(subtitle = subtitulo) +
+    theme(plot.title = element_text(face = "bold"))
+  
+  return(plot_out)
+}
+
+plot_km_nutric <- grafico_km(datos_cox, "t", "evento", "NUTRISCOR2", 
+                             "Riesgo nutricional (NUTRIC Score)")
+plot_km_vsg <- grafico_km(datos_cox, "t", "evento", "VGSING2", 
+                          "Estado nutricional (VSG)")
+plot_km_cal <- grafico_km(datos_cox, "t", "evento", "Grupo_cal", 
+                          "Aporte calórico")
+plot_km_prot <- grafico_km(datos_cox, "t", "evento", "Grupo_prot",
+                           "Aporte proteico")
+plot_km_sn <- grafico_km(datos_cox, "t", "evento", "SN_Menos48h", 
+                         "Nutrición precoz (<48h)")
 
 ```
 
