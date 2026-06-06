@@ -61,7 +61,7 @@ install_if_not <- function(pkg) {
 # Lista de paquetes e instalación
 paquetes <- c("haven", "tidyverse", "nortest", "rstatix", "gtsummary", 
               "ggpubr", "ggalluvial", "ggvenn", "viridisLite", 
-              "survival", "survminer", "caret", "glmnet"
+              "survival", "survminer", "car", "caret", "glmnet"
 )
 
 install_if_not(paquetes)
@@ -87,6 +87,7 @@ library(viridisLite)
 # Análisis de supervivencia
 library(survival)
 library(survminer)
+library(car)
 library(caret)
 library(glmnet)
 
@@ -346,6 +347,8 @@ caracterizacion_muestra <- function(datos, comparar = NULL, excluir = NULL) {
 }
 
 tabla_muestra <- caracterizacion_muestra(datos)
+tabla_muestra_sup <- caracterizacion_muestra(datos, comparar = "MUERTO28")
+
 tabla_muestra
 
 ```
@@ -1782,11 +1785,11 @@ rm(list = ls(pattern = "^resumen"))
 # ---- Análisis de supervivencia (univariante) ----
 
 # Variables para el análisis
-vars_cox <- c(
-  "EDAD", "SEXO", "ALCOHOL", "AHTA", "AEPOC", "AIRC", "AINMUNO", "ANEOPLAS", 
-  "STATUS3", "APACHEII", "SOFA1", "NUTRIC_Score", "TIPO_SN_Grupo", 
-  "gPROT_14d", "VM", "NEC_NA", "TRR", "INFVIA"
-)
+vars_indicadores <- c("NUTRIC_Score", "VGSING2", "Adecuacion_obj_cal", 
+                      "Adecuacion_obj_prot", "SN_Menos48h")
+covariables <- c("EDAD", "SEXO", "ALCOHOL", "AHTA", "AEPOC", "AIRC", "AINMUNO",
+                 "ANEOPLAS", "STATUS3", "APACHEII", "SOFA1", "TIPO_SN_Grupo",
+                 "TOTAL_DIAS_SN", "VM", "NEC_NA", "TRR", "INFVIA")
 
 # Datos para el análisis
 datos_cox <- datos %>%
@@ -1800,7 +1803,7 @@ datos_cox <- datos %>%
     t = if_else(DIAS_UCI > 28, 28, DIAS_UCI),
     evento = as.numeric(MUERTO28),
     
-    # Variables relacionadas con los indicadores
+    # 2.2. Variables relacionadas con los indicadores
     NUTRISCOR2 = factor(NUTRISCOR2, labels = c("Bajo", "Alto")),
     VGSING2 = as_factor(VGSING2),
     Grupo_cal = factor(
@@ -1815,8 +1818,22 @@ datos_cox <- datos %>%
     ),
     SN_Menos48h = factor(SN_Menos48h, labels = c("No", "Sí")),
     
-    # Covariables
-  )
+    # 2.3. Covariables
+    across(
+      all_of(covariables), ~ 
+        {if(inherits(.x, "haven_labelled")) haven::as_factor(.x) else .x}
+    )
+  ) %>%
+  
+  # 3. Tipo de contraste
+  mutate(
+    STATUS3 = `contrasts<-`(STATUS3, value = contr.sum(levels(STATUS3))),
+    TIPO_SN_Grupo = 
+      `contrasts<-`(TIPO_SN_Grupo, value = contr.sum(levels(TIPO_SN_Grupo)))
+  ) %>%
+  
+  # 4. Gestión de valores faltantes
+  drop_na(any_of(c("t", "evento", vars_indicadores, covariables)))
 
 ```
 
@@ -1904,6 +1921,62 @@ plot_km_sn <- grafico_km(datos_cox, "t", "evento", "SN_Menos48h",
 
 ```
 
+```{r}
+# Fórmulas para el análisis de covariables
+univ_formulas <- sapply(covariables,
+                        function(x) as.formula(paste("Surv(t, evento) ~", x))) 
+
+# Modelos univariantes
+univ_modelos <- lapply(univ_formulas, function(x) {coxph(x, data = datos_cox)})
+                        
+# Resumen de resultados
+univ_res <- lapply(univ_modelos, function(x) {
+  res <- tidy(x, exponentiate = TRUE, conf.int = TRUE)
+  
+  res <- res %>%
+    mutate(
+      HR = round(estimate, 2),
+      IC = paste0(round(conf.low, 2), " – ", round(conf.high, 2)),
+      wald.test = round(statistic, 2),
+      p.value = if_else(
+        p.value < 0.001, "<0.001", as.character(round(p.value, 3))
+      )
+    ) %>%
+    select(term, HR, IC, wald.test, p.value)
+  
+  return(res)
+})
+
+tabla_cox_univ <- bind_rows(univ_res)
+
+rm(vars_indicadores, covariables)
+rm(list = ls(pattern = "^univ"))
+
+```
+
+```{r}
+# Análisis de multicolinealidad
+vars_num <- c("NUTRIC_Score", "Adecuacion_obj_cal", "Adecuacion_obj_prot",
+              "EDAD", "APACHEII", "SOFA1", "TOTAL_DIAS_SN")
+
+# Matriz de correlaciones
+mat_cor <- datos_cox %>%
+  select(all_of(vars_num)) %>%
+  cor(method = "spearman", use = "complete.obs")
+
+# Factores de inflación de la varianza (VIF)
+fit_vif <- lm(
+  NUTRIC_Score ~ VGSING2 + Adecuacion_obj_cal + Adecuacion_obj_prot +
+    SN_Menos48h + EDAD + SEXO + ALCOHOL + AHTA + AEPOC + AIRC + AINMUNO +
+    ANEOPLAS + STATUS3 + APACHEII + SOFA1 + TIPO_SN_Grupo + TOTAL_DIAS_SN +
+    VM + NEC_NA + TRR + INFVIA, 
+  data = datos_cox
+)
+
+vif_res <- vif(fit_vif)
+
+```
+
 ### Análisis multivariante
 
 ```{r}
@@ -1911,9 +1984,9 @@ plot_km_sn <- grafico_km(datos_cox, "t", "evento", "SN_Menos48h",
 
 # 1. Variables para el modelo y parámetros
 vars_cox <- c(
-  "EDAD", "ALCOHOL", "AHTA", "AEPOC", "AIRC", "AINMUNO", "ANEOPLAS", 
-  "STATUS3", "APACHEII", "SOFA1", "NUTRIC_Score", "TIPO_SN_Grupo", 
-  "gPROT_14d", "VM", "NEC_NA", "TRR", "INFVIA"
+  "NUTRIC_Score", "VSG", "Adecuacion_obj_prot", "EDAD", "SEXO", "ALCOHOL",
+  "AHTA", "AEPOC", "AIRC", "AINMUNO", "ANEOPLAS", "STATUS3", "SOFA1",
+  "TIPO_SN_Grupo", "TOTAL_DIAS_SN", "NEC_NA", "TRR", "INFVIA"
 )
 
 datos_cox <- datos %>%
