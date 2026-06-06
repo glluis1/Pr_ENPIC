@@ -1827,9 +1827,8 @@ datos_cox <- datos %>%
   
   # 3. Tipo de contraste
   mutate(
-    STATUS3 = `contrasts<-`(STATUS3, value = contr.sum(levels(STATUS3))),
-    TIPO_SN_Grupo = 
-      `contrasts<-`(TIPO_SN_Grupo, value = contr.sum(levels(TIPO_SN_Grupo)))
+    STATUS3 = relevel(STATUS3, "MEDICO"),
+    TIPO_SN_Grupo = relevel(TIPO_SN_Grupo, "NE")
   ) %>%
   
   # 4. Gestión de valores faltantes
@@ -1975,6 +1974,8 @@ fit_vif <- lm(
 
 vif_res <- vif(fit_vif)
 
+rm(vars_num)
+
 ```
 
 ### Análisis multivariante
@@ -1982,31 +1983,16 @@ vif_res <- vif(fit_vif)
 ```{r}
 # ---- Análisis de supervivencia (multivariante) ----
 
-# 1. Variables para el modelo y parámetros
-vars_cox <- c(
-  "NUTRIC_Score", "VSG", "Adecuacion_obj_prot", "EDAD", "SEXO", "ALCOHOL",
-  "AHTA", "AEPOC", "AIRC", "AINMUNO", "ANEOPLAS", "STATUS3", "SOFA1",
-  "TIPO_SN_Grupo", "TOTAL_DIAS_SN", "NEC_NA", "TRR", "INFVIA"
-)
-
-datos_cox <- datos %>%
+# 1. Centrado de variables numéricas
+datos_cox <- datos_cox %>%
   mutate(
-    t = if_else(DIAS_UCI > 28, 28, DIAS_UCI),
-    evento = as.numeric(MUERTO28),
-    
-    STATUS3 = factor(STATUS3, labels = c("QUIRURGICO", "MEDICO", "TRAUMA")),
-    TIPO_SN_Grupo = factor(TIPO_SN_Grupo, 
-                           labels = c("NE", "NPT", "NE_NPT", "NPT_NE")),
-    
-    EDAD = scale(EDAD, center = TRUE, scale = FALSE),
-    BMI = scale(BMI, center = TRUE, scale = FALSE),
-    APACHEII = scale(APACHEII, center = TRUE, scale = FALSE),
-    SOFA1 = scale(SOFA1, center = TRUE, scale = FALSE),
     NUTRIC_Score = scale(NUTRIC_Score, center = TRUE, scale = FALSE),
-    Kcal_14d = scale(Kcal_14d, center = TRUE, scale = FALSE),
-    gPROT_14d = scale(gPROT_14d, center = TRUE, scale = FALSE)
-  ) %>%
-  drop_na(any_of(c("t", "evento", vars_cox)))
+    Adecuacion_obj_prot = scale(
+      Adecuacion_obj_prot, center = TRUE, scale = FALSE
+    ),
+    EDAD = scale(EDAD, center = TRUE, scale = FALSE),
+    SOFA1 = scale(SOFA1, center = TRUE, scale = FALSE)
+  )
 
 # 2. Sets de entrenamiento y test
 set.seed(827)
@@ -2016,33 +2002,35 @@ index_train <- createDataPartition(datos_cox$evento, p = 0.7, list = FALSE)
 train_set <- datos_cox[index_train, ]
 test_set <- datos_cox[-index_train, ]
 
+rm(index_train)
+
 # 3. Ajuste mínimo con el set de entrenamiento
 fit_train_0 <- coxph(Surv(t, evento) ~ 1, data = train_set)
 
 # 4. Ajuste saturado con el set de entrenamiento
-formula_full <- as.formula(
-  paste("Surv(t, evento) ~", paste(vars_cox, collapse = " + "))
+fit_train_full <- coxph(
+  Surv(t, evento) ~ NUTRIC_Score + VGSING2 + Adecuacion_obj_prot + EDAD + 
+    SEXO + ALCOHOL + AHTA + AEPOC + AIRC + AINMUNO + ANEOPLAS + STATUS3 +
+    SOFA1 + TIPO_SN_Grupo + NEC_NA + TRR + INFVIA, 
+  data = train_set
 )
 
-fit_train_full <- coxph(formula_full, data = train_set)
-
-# 5. Multiple stepwise selection
+# 5. Backward stepwise selection
 fit_train_final <- step(
   fit_train_full, 
-  direction = "backward"
-  #trace = 0
+  direction = "backward",
+  trace = 0
 )
 
 # 6. C-Index
-eval_test <- concordance(fit_train_final, newdata = test_set)
-c_index_test <- eval_test$concordance
-
-round(c_index_test, 3)
+c_index <- concordance(fit_train_final, newdata = test_set)$concordance
 
 # 7. Modelo de Cox
-formula_final <- formula(fit_train_final)
-
-fit_cox <- coxph(formula_final, data = datos_cox)
+fit_cox <- coxph(
+  Surv(t, evento) ~ 
+    VGSING2 + Adecuacion_obj_prot + EDAD + STATUS3 + SOFA1 + INFVIA, 
+  data = datos_cox
+)
 
 tabla_cox <- fit_cox %>%
   tbl_regression(
@@ -2054,13 +2042,15 @@ tabla_cox <- fit_cox %>%
 tabla_cox
 
 # 8. Diagnóstico del modelo
-test_ph <- cox.zph(fit_cox)
-test_ph
+tabla_zph <- cox.zph(fit_cox)
 
-ggcoxzph(test_ph)
+plot_cox_zph <- ggcoxzph(tabla_zph)
 
-ggcoxdiagnostics(fit_cox, type = "deviance", linear.predictions = FALSE)
-ggcoxdiagnostics(fit_cox, type = "dfbeta", linear.predictions = FALSE)
+# 9. Gráficos de residuos
+plot_cox_dev <- ggcoxdiagnostics(fit_cox, type = "deviance", 
+                                 linear.predictions = FALSE)
+plot_cox_dfbeta <- ggcoxdiagnostics(fit_cox, type = "dfbeta", 
+                                    linear.predictions = FALSE)
 
 ```
 
