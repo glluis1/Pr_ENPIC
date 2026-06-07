@@ -919,9 +919,9 @@ plot_cumplimiento <- datos %>%
                         labels = c("Riesgo bajo", "Riesgo alto"))
   ) %>%
   mutate(
-    Indicador = recode(Indicador,
-                       "Cumplimiento_cal" = "Calorías",
-                       "Cumplimiento_prot" = "Proteínas")
+    Indicador = recode_values(Indicador,
+                              "Cumplimiento_cal" ~ "Calorías",
+                              "Cumplimiento_prot" ~ "Proteínas")
   ) %>%
   
   # 4. Filtraje de valores faltantes
@@ -1663,12 +1663,12 @@ plot_dhanp_dist <- datos_dhanp %>%
     Biomarcador = str_extract(Clave, "FALCALI|GAMGT|FILIRUB|GOT|GPT|INR"),
     Día = str_extract(Clave, "\\d+|A$"),
     Día = if_else(Día == "A", "Alta", Día),
-    Biomarcador = recode(Biomarcador,
-                         "FALCALI" = "Fosfatasa alcalina",
-                         "GAMGT" = "GGT",
-                         "FILIRUB" = "Bilirubina",
-                         "GOT" = "GOT (AST)",
-                         "GPT" = "GPT (ALT)")
+    Biomarcador = recode_values(Biomarcador,
+                                "FALCALI" ~ "Fosfatasa alcalina",
+                                "GAMGT" ~ "GGT",
+                                "FILIRUB" ~ "Bilirubina",
+                                "GOT" ~ "GOT (AST)",
+                                "GPT" ~ "GPT (ALT)")
   ) %>%
   
   # 5. Filtrado de valores faltantes
@@ -1789,7 +1789,7 @@ vars_indicadores <- c("NUTRIC_Score", "VGSING2", "Adecuacion_obj_cal",
                       "Adecuacion_obj_prot", "SN_Menos48h")
 covariables <- c("EDAD", "SEXO", "ALCOHOL", "AHTA", "AEPOC", "AIRC", "AINMUNO",
                  "ANEOPLAS", "STATUS3", "APACHEII", "SOFA1", "TIPO_SN_Grupo",
-                 "TOTAL_DIAS_SN", "VM", "NEC_NA", "TRR", "INFVIA")
+                 "VM", "NEC_NA", "TRR", "INFVIA")
 
 # Datos para el análisis
 datos_cox <- datos %>%
