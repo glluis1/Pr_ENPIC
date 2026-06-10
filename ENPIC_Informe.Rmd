@@ -112,7 +112,7 @@ $$\mathrm{Peso\ ideal} = 25 \cdot \mathrm{talla}^2$$
 
 Para las comparaciones entre dos grupos se han usado pruebas $t$ de Student y $U$ de Mann_whitney, así como pruebas $\chi^2$ o tests exactos para la evaluación de las variables categóricas. En el caso de las comparaciones entre más de dos grupos, se ha utilizado análisis de la varianza (ANOVA, por su acrónimo en inglés) con correcciones *post-hoc* o la prueba de Kruskal-Wallis. En todos los casos, se ha evaluado la normalidad de la distribución muestral mediante la prueba de Kolmogórov-Smirnov. 
 
-El análisis de supervivencia se ha llevado a cabo utilizando el estimador de Kaplan-Meier para cada subgrupo. En el análisis multivariante subsiguiente se ha empleado un modelo escalonado hacia atrás (*backward stepwise*) de regresión de Cox para evaluar la mortalidad a los 28 días. Se han incluido variables en el modelo inicial con un valor $p < 0,2$ en el análisis univariante, así como covariables que se han considerado de relevancia clínica (e.g. edad, sexo, tipo de paciente o gravedad). Se ha empleado un modelo de aprendizaje automático basado en el criterio de información de Akaike (AIC, por sus siglas en inglés) para excluir variables del modelo final. Posteriormente al diagnóstico del modelo de regresión, se han eliminado variables con coeficiente de correlación de Spearman superior a 0,7 o que no cumplían la hipótesis de riesgos proporcionales.
+El análisis de supervivencia se ha llevado a cabo utilizando el estimador de Kaplan-Meier para cada subgrupo. En el análisis multivariante subsiguiente se ha empleado un modelo escalonado hacia atrás (*backward stepwise selection*) de regresión de Cox para evaluar la mortalidad a los 28 días. Se han incluido variables en el modelo inicial con un valor $p < 0,2$ en el análisis univariante, así como covariables que se han considerado de relevancia clínica (e.g. edad, sexo, tipo de paciente o gravedad). Se ha empleado un algoritmo de selección automática basado en el valor p y en el criterio de cambio en las estimaciones (*change in estimates*) con un umbral de corte del 10% para excluir variables del modelo final. Posteriormente al diagnóstico del modelo de regresión, se han eliminado variables con coeficiente de correlación de Spearman superior a 0,7 o que no cumplían la hipótesis de riesgos proporcionales para asegurar la robustez del modelo estadístico.
 
 Los análisis estadísticos se han llevado a cabo con el programario R (versión 4.6.0). Se ha considerado significativo un valor $p < 0,05$ bilateral, salvo que se indique lo contrario.
 
@@ -1506,6 +1506,10 @@ tabla_dhanp_comp
 
 ## Análisis de supervivencia
 
+La **Tabla 12** recoge las características de la muestra comparadas por supervivencia. Las variables significativamente diferentes entre grupos se incluyen en el análisis de supervivencia, con excepción de aquellas que están estrechamente relacionadas con la mortalidad (e.g. estancia en UCI). Tampoco se incluyen los factores cuyo nivel *positivo* no supera el 10% de casos.
+
+De los 524 pacientes de la muestra original, se han excluido aquellos que presentaban datos incompletos para el aporte nutricional en cada una de las fases o para otras covariables de interés. Después de la aplicación de estos filtros, 478 pacientes han sido incluidos en el análisis de supervivencia (**Fig. 5**).
+
 ```{r}
 # Características de la muestra por supervivencia
 tabla_muestra_sup <- datos %>%
@@ -1587,12 +1591,26 @@ include_graphics("flujo_estudio.png")
 
 ### Análisis univariante
 
+Para el modelo de regresión se han seleccionado variables relacionadas con los indicadores 1, 2, 4 y 6. Se ha priorizado la elección de variables numéricas sobre variables categóricas para dotar de mayor potencia estadística al análisis. No se han incluido variables de los indicadores relacionados con la NP porque se asocian solamente a un conjunto concreto de pacientes.
+
+Las variables propuestas son las siguientes:
+
+- **Riesgo nutricional**. Puntuación del NUTRIC Score (numérica discreta).
+- **Estado nutricional**. VGS al ingreso (categórica con 2 niveles).
+- **Aporte calórico**. Porcentaje de adecuación al objetivo de aporte calórico ponderado por fases (numérica continua).
+- **Aporte proteico**. Porcentaje de adecuación al objetivo de aporte proteico ponderado por fases (numérica continua).
+- **Nutrición precoz**. Tiempo (h) desde el ingreso hasta el inicio de la terapia nutricional (numérica continua).
+
+Aunque en el análisis estadístico se utilizan las variables numéricas si es posible, para facilitar la visualización se muestra la comparación de las curvas de Kaplan-Meier por grupos (e.g. riesgo nutricional, cumplimiento de los requerimientos de aporte). Se pueden observar diferencias significativas en los grupos de riesgo y estado nutricional (**Fig. 6A**, **Fig. 6B**). También se incluye el aporte proteico, con $p < 0,2$ (**Fig. 6D**).
+
+En el **Anexo II** se muestran los resultados del análisis univariante para las covariables de interés (**Tabla E3**). Se han incluido las variables con $p < 0,2$, además del sexo como factor de confusión. Por otro lado, se ha excluido la puntuación de la escala APACHE II por su alta correlación con el NUTRIC Score y la número de días de terapia nutricional, ya que no cumplía la hipótesis de riesgos proporcionales. El análisis de factores de inflaciónd de la varianza (VIF) no ha revelado otras variables potencialmente problemáticas (**Tabla E4**).
+
 ```{r}
 # ---- Análisis de supervivencia (univariante) ----
 
 # Variables para el análisis
 vars_indicadores <- c("NUTRIC_Score", "VGSING2", "Adecuacion_obj_cal", 
-                      "Adecuacion_obj_prot", "SN_Menos48h")
+                      "Adecuacion_obj_prot", "HORASIN")
 covariables <- c("EDAD", "SEXO", "ALCOHOL", "AHTA", "AEPOC", "AIRC", "AINMUNO",
                  "ANEOPLAS", "STATUS3", "APACHEII", "SOFA1", "TIPO_SN_Grupo",
                  "VM", "NEC_NA", "TRR")
@@ -1767,6 +1785,12 @@ univ_res <- lapply(univ_modelos, function(x) {
 
 tabla_cox_univ <- bind_rows(univ_res)
 
+tabla_cox_univ <- tabla_cox_univ %>%
+  kable(
+    col.names = c("Variable", "HR", "IC 95%", "Test de Wald", "Valor p"),
+    caption = "**Análisis univariante de covariables**"
+  )
+
 rm(vars_indicadores, covariables)
 rm(list = ls(pattern = "^univ"))
 
@@ -1775,7 +1799,7 @@ rm(list = ls(pattern = "^univ"))
 ```{r}
 # Análisis de multicolinealidad
 vars_num <- c("NUTRIC_Score", "Adecuacion_obj_cal", "Adecuacion_obj_prot",
-              "EDAD", "APACHEII", "SOFA1")
+              "HORASIN", "EDAD", "APACHEII", "SOFA1")
 
 # Matriz de correlaciones
 mat_cor <- datos_cox %>%
@@ -1785,19 +1809,32 @@ mat_cor <- datos_cox %>%
 # Factores de inflación de la varianza (VIF)
 fit_vif <- lm(
   NUTRIC_Score ~ VGSING2 + Adecuacion_obj_cal + Adecuacion_obj_prot +
-    SN_Menos48h + EDAD + SEXO + ALCOHOL + AHTA + AEPOC + AIRC + AINMUNO +
+    HORASIN + EDAD + SEXO + ALCOHOL + AHTA + AEPOC + AIRC + AINMUNO +
     ANEOPLAS + STATUS3 + APACHEII + SOFA1 + TIPO_SN_Grupo + TOTAL_DIAS_SN +
     VM + NEC_NA + TRR, 
   data = datos_cox
 )
 
-vif_res <- vif(fit_vif)
+tabla_vif <- vif(fit_vif)
+
+tabla_vif <- as.data.frame(tabla_vif) %>%
+  kable(
+    caption = "**Análisis de factores de inflación de la varianza (VIF)**"
+  )
 
 rm(vars_num)
 
 ```
 
 ### Análisis multivariante
+
+Una vez seleccionadas las variables para el modelo saturado, se ha dividido el conjunto de datos en un set de entrenamiento con el 70% de las observaciones (n = 335) y un set de prueba con el resto (n = 143). Se han centrado los datos teniendo en cuenta las medias de las variables en el set de entrenamiento para garantizar la independencia de los datos en ambos conjuntos.
+
+El modelo final revela que la edad avanzada, la desnutrición (valorada con la herramienta VGS) y un valor elevado en la escala SOFA se asocian a una mayor mortalidad a los 28 días. En cambio, la adecuación a los objetivos de aporte proteico actuaría como agente protector. También se observa un menor riesgo de mortalidad en el grupo con diagnóstico traumatológico, en comparación al grupo de referencia con diagnóstico médico (**Tabla 13**). Al comparar las predicciones con el set de prueba se obtiene un índice de concordancia (C-Index) de 0,72.
+
+En el **Anexo II** se incluye el detalle de los diferentes pasos del algoritmo de selección de variables. En el test de riesgos proporcionales se obtiene signifiación estadística para los valores de NUTRIC Score y SOFA ($p \approx 0,035$). Aun así, teniendo en cuenta el elevado número de pacientes y que el valor p global es de 0,238, se considera que no representa un problema para la estabilidad del modelo (**Tabla E5**).
+
+El diagnóstico de residuos muestra algunas observaciones influyentes, especialmente en el grupo diagnóstico (**Fig. E5**, **Fig. E6**). No obstante, la mayoría de datos se distribuye uniformemente alrededor de 0, así que no se condidera que se incumplan las suposiciones de la regresión de Cox.
 
 ```{r}
 # ---- Análisis de supervivencia (multivariante) ----
@@ -2387,6 +2424,17 @@ plot_npc
 
 # Anexo II. Detalle del análisis de supervivencia
 
+## Tablas adicionales del análisis univariante
+
+```{r}
+# Resumen del análisis univariante
+tabla_cox_univ
+
+# Análisis de factores de inflación de la varianza
+tabla_vif
+
+```
+
 ## Selección de variables para la regresión de Cox
 
 ```{r}
@@ -2418,5 +2466,7 @@ plot_cox_dfbeta
 ```
 
 # Anexo III. Código R
+
+El código utilizado para generar este documento se puede encontrar en el siguiente enlace: [Link Text](https://github.com/glluis1/Pr_ENPIC.git).
 
 # Referencias
