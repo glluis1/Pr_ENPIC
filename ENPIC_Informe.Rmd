@@ -59,9 +59,10 @@ install_if_not <- function(pkg) {
 }
 
 # Lista de paquetes e instalación
-paquetes <- c("haven", "tidyverse", "nortest", "rstatix", "gtsummary", 
-              "ggpubr", "ggalluvial", "ggvenn", "viridisLite", "patchwork",
-              "survival", "survminer", "car", "caret", "glmnet"
+paquetes <- c(
+  "haven", "tidyverse", "nortest", "rstatix", "ggpubr", "ggalluvial", "ggvenn",
+  "viridisLite", "patchwork", "gtsummary", "DiagrammeR", "DiagrammeRsvg",
+  "rsvg", "survival", "survminer", "car", "caret", "glmnet"
 )
 
 install_if_not(paquetes)
@@ -78,12 +79,17 @@ library(tidyverse)
 # Estadística y gráficos
 library(nortest)
 library(rstatix)
-library(gtsummary)
 library(ggpubr)
 library(ggalluvial)
 library(ggvenn)
 library(viridisLite)
 library(patchwork)
+
+# Tablas
+library(gtsummary)
+library(DiagrammeR)
+library(DiagrammeRsvg)
+library(rsvg)
 
 # Análisis de supervivencia
 library(survival)
@@ -1521,10 +1527,10 @@ plot_flow <- grViz("
   digraph flow_chart {
     # 1. Configuración global del diagrama
     graph [layout = dot, rankdir = TB, splines = ortho, 
-           ranksep = 0, nodesep = 2]
+           ranksep = 0, nodesep = 2.5]
     
     # 2. Estética
-    node [shape = box]
+    node [shape = box, width = 4]
     
     # 3. Nodos del eje principal
     pob_total [label = '525 pacientes con soporte nutricional']
@@ -1534,7 +1540,7 @@ plot_flow <- grViz("
     pob_cox [label = '478 pacientes incluidos para la regresión']
     
     # 4. Nodos laterales
-    node[width = 3]
+    node[width = 3.5]
     
     excl_err [label = 'Excluido 1 paciente \\ncon datos erróneos']
     excl_aguda [label = 
@@ -1572,7 +1578,10 @@ plot_flow <- grViz("
   }
 ")
 
-plot_flow
+plot_flow_svg <- export_svg(plot_flow)
+rsvg_png(charToRaw(plot_flow_svg), "flujo_estudio.png")
+
+include_graphics("flujo_estudio.png")
 
 ```
 
@@ -1633,7 +1642,7 @@ datos_cox <- datos %>%
 
 ```
 
-```{r, fig.height=13.5}
+```{r, fig.height=9}
 #' Comparación de curvas de supervivencia
 #' 
 #' @description
@@ -1793,18 +1802,7 @@ rm(vars_num)
 ```{r}
 # ---- Análisis de supervivencia (multivariante) ----
 
-# 1. Centrado de variables numéricas
-datos_cox <- datos_cox %>%
-  mutate(
-    NUTRIC_Score = scale(NUTRIC_Score, center = TRUE, scale = FALSE),
-    Adecuacion_obj_prot = scale(
-      Adecuacion_obj_prot, center = TRUE, scale = FALSE
-    ),
-    EDAD = scale(EDAD, center = TRUE, scale = FALSE),
-    SOFA1 = scale(SOFA1, center = TRUE, scale = FALSE)
-  )
-
-# 2. Sets de entrenamiento y test
+# 1. Sets de entrenamiento y test
 set.seed(827)
 
 index_train <- createDataPartition(datos_cox$evento, p = 0.7, list = FALSE)
@@ -1812,56 +1810,42 @@ index_train <- createDataPartition(datos_cox$evento, p = 0.7, list = FALSE)
 train_set <- datos_cox[index_train, ]
 test_set <- datos_cox[-index_train, ]
 
-rm(index_train)
+# 2. Centrado de variables numéricas
+vars_center <- c("NUTRIC_Score", "Adecuacion_obj_prot", "EDAD", "SOFA1")
 
-# 3. Ajuste saturado con el set de entrenamiento
-fit_train_full <- coxph(
-  Surv(t, evento) ~ NUTRIC_Score + VGSING2 + Adecuacion_obj_prot + EDAD + 
-    SEXO + ALCOHOL + AHTA + AEPOC + AIRC + AINMUNO + ANEOPLAS + STATUS3 +
-    SOFA1 + TIPO_SN_Grupo + NEC_NA + TRR, 
-  data = train_set
-)
+prep_center <- preProcess(train_set[, vars_center], method = "center")
 
-# 5. Backward stepwise selection
-fit_train_final <- step(
-  fit_train_full, 
-  direction = "backward"#,
-  #trace = 0
-)
+# 3. Aplicación del centrado a los dos subconjuntos
+train_set[, vars_center] <- predict(prep_center, train_set[, vars_center])
+test_set[, vars_center] <- predict(prep_center, test_set[, vars_center])
 
-# 6. C-Index
-c_index <- concordance(fit_train_final, newdata = test_set)$concordance
-
-# 7. Modelo de Cox
-fit_cox <- coxph(
-  Surv(t, evento) ~ 
-    VGSING2 + Adecuacion_obj_prot + EDAD + STATUS3 + SOFA1, 
-  data = datos_cox
-)
-
-tabla_cox <- fit_cox %>%
-  tbl_regression(
-    exponentiate = TRUE
-  ) %>%
-  bold_p(t = 0.05) %>%
-  modify_header(label = "**Variable**")
-
-tabla_cox
-
-# 8. Diagnóstico del modelo
-tabla_zph <- cox.zph(fit_cox)
-
-plot_cox_zph <- ggcoxzph(tabla_zph)
-
-# 9. Gráficos de residuos
-plot_cox_dev <- ggcoxdiagnostics(fit_cox, type = "deviance", 
-                                 linear.predictions = FALSE)
-plot_cox_dfbeta <- ggcoxdiagnostics(fit_cox, type = "dfbeta", 
-                                    linear.predictions = FALSE)
+rm(index_train, vars_center, prep_center)
 
 ```
 
-```{r}
+```{r, results='hide'}
+#' Selección de variables
+#' 
+#' @description
+#' Implementa un algoritmo de selección escalonada hacia atrás (backward stepwise selection) de variables para el modelo de regresión de Cox, a partir del valor p y del criterio de cambio en los estimadores (change in estimates, CIE).
+#'
+#' @param datos Un \code{data.frame} o \code{tibble} que contiene los datos.
+#' @param formula Una fórmula de tipo \code{Surv(tiempo, evento) ~ variables} para el modelo saturado.
+#' @param vars_estudio Un vector de caracteres con los nombres de las variables de estudio.
+#' @param p_corte Numérico. Umbral de significación estadística (por defecto 0.1).
+#' @param cie_corte Numérico. Porcentaje mínimo de cambio en el HR (CIE) para considerar una variable como confusora (por defecto 10%).
+#'
+#' @returns Un objeto de clase \code{coxph} con el modelo final.
+#' 
+#' @importFrom survival coxph
+#' @importFrom stats terms as.formula coef deparse
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Ejemplo de uso con datos hipotéticos
+#' seleccion_cox(datos = datos, formula = Surv(t, evento) ~ 1, vars_estudio = "NUTRIC_Score", p_corte = 0.05, cie_corte = 10)
+#' }
 seleccion_cox <- function(datos, formula, vars_estudio, 
                           p_corte = 0.1, cie_corte = 10) {
   # 1. Extracción de variables de la fórmula inicial
@@ -1870,7 +1854,7 @@ seleccion_cox <- function(datos, formula, vars_estudio,
   # 2. Blindaje de variables de estudio
   covariables <- setdiff(variables, vars_estudio)
   
-  fit_step <- coxph(formula, data = datos)
+  fit <- coxph(formula, data = datos)
   bucle <- TRUE
   
   cat("Inicio de la selección de variables.\n\n")
@@ -1878,17 +1862,16 @@ seleccion_cox <- function(datos, formula, vars_estudio,
   # 3. Bucle de selección de variables
   while(bucle && length(covariables) > 0) {
     # 3.1. Resumen del modelo actual
-    res_step <- summary(fit_step)
-    coef_mat <- res_step$coefficients
+    coef_mat <- summary(fit)$coefficients
     
-    print(fit_step)
+    print(fit)
     
     # 3.2. Filtraje de covariables
-    coef_vars <- rep(names(fit_step$assign), lengths(fit_step$assign))
+    coef_vars <- rep(names(fit$assign), lengths(fit$assign))
     
-    filas <- coef_vars %in% covariables
-    coef_step <- coef_mat[filas, , drop = FALSE]
-    vars_step_map <- coef_vars[filas]
+    rows <- coef_vars %in% covariables
+    coef_step <- coef_mat[rows, , drop = FALSE]
+    vars_step_map <- coef_vars[rows]
     
     if(nrow(coef_step) == 0) {
       bucle <- FALSE
@@ -1913,18 +1896,18 @@ seleccion_cox <- function(datos, formula, vars_estudio,
         " (p = ", round(p_max_val, 3), ").\n", sep = "")
     
     # 3.5. Criterio change-in-estimates
-    vars_all_step <- rep(names(fit_step$assign), lengths(fit_step$assign))
-    hr_0 <- exp(coef(fit_step)[vars_all_step %in% vars_estudio])
+    vars_all <- rep(names(fit$assign), lengths(fit$assign))
+    hr_0 <- exp(coef(fit)[vars_all %in% vars_estudio])
     
     vars_step <- setdiff(attr(terms(formula), "term.labels"), p_max_var)
     formula_step <- as.formula(paste(
       deparse(formula[[2]]), "~", paste(vars_step, collapse = " + ")
     ))
     
-    fit_new <- coxph(formula_step, data = datos)
+    fit_step <- coxph(formula_step, data = datos)
     
-    vars_all_new <- rep(names(fit_new$assign), lengths(fit_new$assign))
-    hr_step <- exp(coef(fit_new)[vars_all_new %in% vars_estudio])
+    vars_all_step <- rep(names(fit_step$assign), lengths(fit_step$assign))
+    hr_step <- exp(coef(fit_step)[vars_all_step %in% vars_estudio])
     
     cambio_pct <- abs((hr_0 - hr_step) / hr_0) * 100
     cambio_max <- max(cambio_pct, na.rm = TRUE)
@@ -1933,7 +1916,7 @@ seleccion_cox <- function(datos, formula, vars_estudio,
     if (cambio_max < cie_corte) {
       cat("Variable eliminada (Cambio máximo en HR: ", 
           round(cambio_max, 2), "%).\n\n", sep = "")
-      fit_step <- fit_new
+      fit <- fit_step
       formula <- formula_step
       covariables <- setdiff(covariables, p_max_var)
     } else {
@@ -1943,7 +1926,7 @@ seleccion_cox <- function(datos, formula, vars_estudio,
     }
   }
   
-  return(fit_step)
+  return(fit)
 }
 
 formula_sat <- Surv(t, evento) ~ NUTRIC_Score + VGSING2 + Adecuacion_obj_prot + 
@@ -1956,18 +1939,20 @@ fit_train_final <- seleccion_cox(
   vars_estudio = c("NUTRIC_Score", "VGSING2", "Adecuacion_obj_prot")
 )
 
-fit_train_final
+rm(formula_sat)
 
 ```
 
 ```{r}
-# 6. C-Index
+# ---- Diagnóstico del modelo ----
+
+# 1. C-Index
 c_index <- concordance(fit_train_final, newdata = test_set)$concordance
 
-# 7. Modelo de Cox
+# 2. Modelo final con todos los datos
 fit_cox <- coxph(
   Surv(t, evento) ~ 
-    VGSING2 + Adecuacion_obj_prot + EDAD + STATUS3 + SOFA1, 
+    NUTRIC_Score + VGSING2 + Adecuacion_obj_prot + EDAD + STATUS3 + SOFA1, 
   data = datos_cox
 )
 
@@ -1980,16 +1965,36 @@ tabla_cox <- fit_cox %>%
 
 tabla_cox
 
-# 8. Diagnóstico del modelo
-tabla_zph <- cox.zph(fit_cox)
+# 3. Test de riesgos proporcionales
+tabla_cox_zph <- cox.zph(fit_cox)
+plot_cox_zph <- ggcoxzph(tabla_cox_zph)
 
-plot_cox_zph <- ggcoxzph(tabla_zph)
+tabla_cox_zph <- as.data.frame(tabla_cox_zph$table) %>%
+  kable(caption = "**Test de riesgos proporcionales**")
 
-# 9. Gráficos de residuos
+# 4. Gráficos de residuos
 plot_cox_dev <- ggcoxdiagnostics(fit_cox, type = "deviance", 
-                                 linear.predictions = FALSE)
+                                 linear.predictions = FALSE) +
+  labs(
+    title = "Diagnóstico de residuos",
+    subtitle = "Desviaciones",
+    x = "Observaciones",
+    y = "Residuos"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold")
+  )
+
 plot_cox_dfbeta <- ggcoxdiagnostics(fit_cox, type = "dfbeta", 
-                                    linear.predictions = FALSE)
+                                    linear.predictions = FALSE) +
+  labs(
+    subtitle = "Dfbetas",
+    x = "Observaciones",
+    y = "Residuos"
+  ) +
+  theme_minimal()
+
 ```
 
 # Anexo I. Tablas y gráficos adicionales
@@ -2380,10 +2385,38 @@ plot_npc
 
 ```
 
-# Anexo. Código R
+# Anexo II. Detalle del análisis de supervivencia
 
-```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
+## Selección de variables para la regresión de Cox
+
+```{r}
+# Detalle de la selección de variables
+formula_sat <- Surv(t, evento) ~ NUTRIC_Score + VGSING2 + Adecuacion_obj_prot + 
+  EDAD + SEXO + ALCOHOL + AHTA + AEPOC + AIRC + AINMUNO + ANEOPLAS + STATUS3 +
+  SOFA1 + TIPO_SN_Grupo + NEC_NA + TRR
+
+fit_train_final <- seleccion_cox(
+  datos = train_set,
+  formula = formula_sat,
+  vars_estudio = c("NUTRIC_Score", "VGSING2", "Adecuacion_obj_prot")
+)
+
+rm(formula_sat)
 
 ```
+
+## Diagnóstico del modelo
+
+```{r}
+# Test de riesgos proporcionales
+tabla_cox_zph
+
+# Diagnóstico de residuos
+plot_cox_dev
+plot_cox_dfbeta
+
+```
+
+# Anexo III. Código R
 
 # Referencias
