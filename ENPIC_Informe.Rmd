@@ -2304,89 +2304,173 @@ plot_cumplimiento
 ## Evolución del cumplimiento de requerimientos nutricionales
 
 ```{r}
-# Alluvial plot
-plot_evol <- datos %>%
-  # 1. Perfiles de cumplimiento
+# Características de la muestra según trayectoria de cumplimiento
+tabla_muestra_evol <- datos %>%
   mutate(
-    # 1.1. Fase aguda
     cal_ok_ag = Media_cal_aguda >= (0.8 * 15),
     prot_ok_ag = Media_prot_aguda >= (0.8 * 0.8),
-    
-    Perfil_ag = case_when(
-      cal_ok_ag & prot_ok_ag ~ "Adecuado (≥80%)",
-      cal_ok_ag & !prot_ok_ag ~ "Calórico",
-      !cal_ok_ag & prot_ok_ag ~ "Proteico",
-      !cal_ok_ag & !prot_ok_ag ~ "Insuficiente (<80%)"
-    ),
-    
-    # 1.2. Fase estable
     cal_ok_es = Media_cal_estable >= (0.8 * 25),
     prot_ok_es = Media_prot_estable >= (0.8 * 1.3),
     
-    Perfil_es = case_when(
-      cal_ok_es & prot_ok_es ~ "Adecuado (≥80%)",
-      cal_ok_es & !prot_ok_es ~ "Calórico",
-      !cal_ok_es & prot_ok_es ~ "Proteico",
-      !cal_ok_es & !prot_ok_es ~ "Insuficiente (<80%)"
-    )
+    ok_aguda = cal_ok_ag & prot_ok_ag,
+    ok_estable = cal_ok_es & prot_ok_es
   ) %>%
+  filter(!is.na(ok_aguda) & !is.na(ok_estable)) %>%
   
-  # 2. Pacientes con datos en ambas fases
-  filter(!is.na(Perfil_ag) & !is.na(Perfil_es)) %>%
-  
-  # 3. Agrupación de datos
-  group_by(Perfil_ag, Perfil_es) %>%
-  summarise(n = n(), .groups = "drop") %>%
-  
-  # 4. Orden de factores
   mutate(
-    Perfil_ag = factor(
-      Perfil_ag, levels = c("Adecuado (≥80%)",
-                            "Calórico",
-                            "Proteico",
-                            "Insuficiente (<80%)")
+    Grupo_evol = case_when(
+      ok_aguda & ok_estable ~ "FA + FE",
+      ok_aguda & !ok_estable ~ "Solo FA",
+      !ok_aguda & ok_estable ~ "Solo FE",
+      !ok_aguda & !ok_estable ~ "Insuficiente"
     ),
-    Pefil_es = factor(
-      Perfil_es, levels = c("Adecuado (≥80%)",
-                            "Calórico",
-                            "Proteico",
-                            "Insuficiente (<80%)")
-    )
+    Grupo_evol = factor(Grupo_evol,
+                        levels = c("FA + FE", 
+                                   "Solo FA", 
+                                   "Solo FE", 
+                                   "Insuficiente"))
   ) %>%
   
-  # 5. Gráfico
-  ggplot(aes(y = n, axis1 = Perfil_ag, axis2 = Perfil_es)) +
-  geom_alluvium(aes(fill = Perfil_ag), alpha = 0.6, width = 1/4) +
-  geom_stratum(width = 1/4, fill = "white", color = "grey30") +
+  caracterizacion_muestra(comparar = "Grupo_evol", 
+                          excluir = c("Kcal_14d", "gPROT_14d"))
+
+tabla_muestra_evol
+
+```
+
+```{r}
+#' Alluvial plot
+#' 
+#' @description
+#' Genera un diagram de aluviones que muestra los perfiles de cumplimiento nutricional entre la fase aguda y la fase estable. Permite la estratificación por grupos.
+#'
+#' @param datos Un \code{data.frame} o \code{tibble} que contiene los datos.
+#' @param comparar El nombre del grupo a comparar (sin comillas).
+#'
+#' @returns Un gráfico de aluviones de clase \code{ggplot}
+#' 
+#' @importFrom dplyr %>% mutate case_when filter group_by summarise
+#' @importFrom ggplot2 ggplot aes geom_text scale_x_discrete scale_fill_viridis_d labs theme_minimal theme element_blank element_text facet_wrap vars after_stat
+#' @importFrom ggalluvial geom_alluvium geom_stratum
+#' @importFrom haven as_factor
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Ejemplo de uso con datos hipotéticos
+#' evolucion_aporte(df)
+#' evolucion_aporte(df, comparar = NUTRIC)
+#' }
+evolucion_aporte <- function(datos, comparar = NULL) {
+  # 1. Perfiles de cumplimiento
+  datos <- datos %>%
+    mutate(
+      # 1.1. Fase aguda
+      cal_ok_ag = Media_cal_aguda >= (0.8 * 15),
+      prot_ok_ag = Media_prot_aguda >= (0.8 * 0.8),
+      
+      Perfil_ag = case_when(
+        cal_ok_ag & prot_ok_ag ~ "Adecuado (≥80%)",
+        cal_ok_ag & !prot_ok_ag ~ "Calórico",
+        !cal_ok_ag & prot_ok_ag ~ "Proteico",
+        !cal_ok_ag & !prot_ok_ag ~ "Insuficiente (<80%)"
+      ),
+      
+      # 1.2. Fase estable
+      cal_ok_es = Media_cal_estable >= (0.8 * 25),
+      prot_ok_es = Media_prot_estable >= (0.8 * 1.3),
+      
+      Perfil_es = case_when(
+        cal_ok_es & prot_ok_es ~ "Adecuado (≥80%)",
+        cal_ok_es & !prot_ok_es ~ "Calórico",
+        !cal_ok_es & prot_ok_es ~ "Proteico",
+        !cal_ok_es & !prot_ok_es ~ "Insuficiente (<80%)"
+      )
+    ) %>%
+    
+    # 2. Pacientes con datos en ambas fases
+    filter(!is.na(Perfil_ag) & !is.na(Perfil_es))
   
-  # 5.1. Etiquetas
-  geom_text(
-    stat = "stratum",
-    aes(label = paste0(
-      after_stat(stratum), "\n",
-      "n = ", after_stat(count), " (", 
-      sprintf("%.1f", after_stat(count) / sum(after_stat(count)) * 200), "%)"
-    )),
-    size = 2.7, fontface = "bold", lineheight = 0.8
-  ) +
+  # 3. Filtro de valores faltantes
+  if (!is.null(substitute(comparar))) {
+    datos <- datos %>%
+      filter(!is.na({{ comparar }})) %>%
+      mutate({{ comparar }} := as_factor({{ comparar }}))
+  }
   
-  # 5.2. Estética
-  scale_x_discrete(limits = c("Fase Aguda", "Fase Estable"), 
-                   expand = c(0.15, 0.05)) +
-  scale_fill_viridis_d() +
-  labs(
-    title = "Dinámica del cumplimiento de objetivos nutricionales",
-    subtitle = "Aporte nutricional por fase",
-    y = "Número de pacientes (n)"
-  ) +
-  theme_minimal() +
-  theme(
-    panel.grid.major.x = element_blank(),
-    panel.grid.minor = element_blank(),
-    plot.title = element_text(face = "bold"),
-    axis.text.x = element_text(size = 11, face = "bold", color = "black"),
-    legend.position = "none"
-  )
+  # 4. Agrupación de datos y porcentajes
+  datos <- datos %>%
+    group_by(Perfil_ag, Perfil_es, {{ comparar }}) %>%
+    summarise(n = n(), .groups = "drop") %>%
+    
+    # 5. Orden de factores
+    mutate(
+      Perfil_ag = factor(
+        Perfil_ag, levels = c("Adecuado (≥80%)", 
+                              "Calórico",
+                              "Proteico", 
+                              "Insuficiente (<80%)")
+      ),
+      Pefil_es = factor(
+        Perfil_es, levels = c("Adecuado (≥80%)",
+                              "Calórico",
+                              "Proteico",
+                              "Insuficiente (<80%)")
+      )
+    )
+  
+  # 6. Gráfico
+  p <- ggplot(datos, aes(y = n, axis1 = Perfil_ag, axis2 = Perfil_es)) +
+    geom_alluvium(aes(fill = Perfil_ag), alpha = 0.6, width = 1/4) +
+    geom_stratum(width = 1/4, fill = "white", color = "grey30") +
+    
+    # 6.1. Etiquetas
+    geom_text(
+      stat = "stratum",
+      aes(label = paste0(
+        after_stat(stratum), "\n", "n = ", after_stat(count), " (",
+        sprintf("%.1f", after_stat(prop) * 100), "%)"
+      )),
+      size = 2.7, fontface = "bold", lineheight = 0.8
+    ) +
+    
+    # 6.2. Estética
+    scale_x_discrete(limits = c("Fase Aguda", "Fase Estable"),
+                     expand = c(0.15, 0.05)) +
+    scale_fill_viridis_d() +
+    labs(
+      title = "Dinámica del cumplimiento de objetivos nutricionales",
+      subtitle = if (is.null(substitute(comparar))) {
+        "Aporte nutricional por fase"
+      } else {
+        paste("Evolución por", deparse(substitute(comparar)))
+      },
+      y = "Número de pacientes (n)"
+    ) +
+    theme_minimal() +
+    theme(
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor = element_blank(),
+      plot.title = element_text(face = "bold"),
+      axis.text.x = element_text(size = 11, face = "bold", color = "black"),
+      legend.position = "none"
+    )
+  
+  # 7. Comparación por grupos
+  if (!is.null(substitute(comparar))) {
+    p <- p + 
+      facet_wrap(vars({{ comparar }}), scales = "free_y") +
+      theme(
+        strip.text = element_text(size = 11, face = "bold", color = "darkblue")
+      )
+  }
+  
+  return(p)
+}
+
+plot_evol <- evolucion_aporte(datos)
+plot_evol_nutric <- evolucion_aporte(datos, comparar = NUTRISCOR2)
+plot_evol_sn <- evolucion_aporte(datos, comparar = TIPO_SN_Grupo)
 
 plot_evol
 
