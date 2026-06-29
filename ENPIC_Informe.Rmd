@@ -60,9 +60,9 @@ install_if_not <- function(pkg) {
 
 # Lista de paquetes e instalación
 paquetes <- c(
-  "haven", "tidyverse", "nortest", "rstatix", "ggpubr", "ggalluvial", "ggvenn",
-  "viridisLite", "patchwork", "gtsummary", "DiagrammeR", "DiagrammeRsvg",
-  "rsvg", "survival", "survminer", "car", "caret", "glmnet"
+  "haven", "tidyverse", "nortest", "rstatix", "FSA", "ggpubr", "ggalluvial", 
+  "ggvenn", "viridisLite", "patchwork", "gtsummary", "DiagrammeR", 
+  "DiagrammeRsvg", "rsvg", "survival", "survminer", "car", "caret", "glmnet"
 )
 
 install_if_not(paquetes)
@@ -79,6 +79,7 @@ library(tidyverse)
 # Estadística y gráficos
 library(nortest)
 library(rstatix)
+library(FSA)
 library(ggpubr)
 library(ggalluvial)
 library(ggvenn)
@@ -110,9 +111,9 @@ Los datos se expresan como medias y desviaciones estándar (DE), medianas [rango
 $$\mathrm{Peso\ ajustado} = (\mathrm{Peso\ actual} - \mathrm{Peso\ ideal}) \cdot 0,33 + \mathrm{Peso\ ideal}$$
 $$\mathrm{Peso\ ideal} = 25 \cdot \mathrm{talla}^2$$
 
-Para las comparaciones entre dos grupos se han usado pruebas $t$ de Student y $U$ de Mann_whitney, así como pruebas $\chi^2$ o tests exactos para la evaluación de las variables categóricas. En el caso de las comparaciones entre más de dos grupos, se ha utilizado análisis de la varianza (ANOVA, por su acrónimo en inglés) con correcciones *post-hoc* o la prueba de Kruskal-Wallis. En todos los casos, se ha evaluado la normalidad de la distribución muestral mediante la prueba de Kolmogórov-Smirnov. 
+Para las comparaciones entre dos grupos se han usado pruebas $t$ de Student y $U$ de Mann_whitney, así como pruebas $\chi^2$ o tests exactos para la evaluación de las variables categóricas. En el caso de las comparaciones entre más de dos grupos, se ha utilizado análisis de la varianza (ANOVA, por su acrónimo en inglés) o la prueba de Kruskal-Wallis, con correcciones *post-hoc* ajustando el valor $p$ con el método de Bonferroni. En todos los casos, se ha evaluado la normalidad de la distribución muestral mediante la prueba de Kolmogórov-Smirnov. 
 
-El análisis de supervivencia se ha llevado a cabo utilizando el estimador de Kaplan-Meier para cada subgrupo. En el análisis multivariante subsiguiente se ha empleado un modelo escalonado hacia atrás (*backward stepwise selection*) de regresión de Cox para evaluar la mortalidad a los 28 días. Se han incluido variables en el modelo inicial con un valor $p < 0,2$ en el análisis univariante, así como covariables que se han considerado de relevancia clínica (e.g. edad, sexo, tipo de paciente o gravedad). Se ha empleado un algoritmo de selección automática basado en el valor p y en el criterio de cambio en las estimaciones (*change in estimates*) con un umbral de corte del 10% para excluir variables del modelo final. Posteriormente al diagnóstico del modelo de regresión, se han eliminado variables con coeficiente de correlación de Spearman superior a 0,7 o que no cumplían la hipótesis de riesgos proporcionales para asegurar la robustez del modelo estadístico.
+El análisis de supervivencia se ha llevado a cabo utilizando el estimador de Kaplan-Meier para cada subgrupo. En el análisis multivariante subsiguiente se ha empleado un modelo escalonado hacia atrás (*backward stepwise selection*) de regresión de Cox para evaluar la mortalidad a los 28 días. Se han incluido variables en el modelo inicial con un valor $p < 0,2$ en el análisis univariante, así como covariables que se han considerado de relevancia clínica (e.g. edad, sexo, tipo de paciente o gravedad). Se ha empleado un algoritmo de selección automática basado en el valor $p$ y en el criterio de cambio en las estimaciones (*change in estimates*) con un umbral de corte del 10% para excluir variables del modelo final. Posteriormente al diagnóstico del modelo de regresión, se han eliminado variables con coeficiente de correlación de Spearman superior a 0,7 o que no cumplían la hipótesis de riesgos proporcionales para asegurar la robustez del modelo estadístico.
 
 Los análisis estadísticos se han llevado a cabo con el programario R (versión 4.6.0). Se ha considerado significativo un valor $p < 0,05$ bilateral, salvo que se indique lo contrario.
 
@@ -354,7 +355,8 @@ caracterizacion_muestra <- function(datos, comparar = NULL, excluir = NULL) {
   return(tabla)
 }
 
-tabla_muestra <- caracterizacion_muestra(datos)
+tabla_muestra <- caracterizacion_muestra(datos) %>%
+  modify_caption("*Tabla 1.* Características de la muestra")
 
 tabla_muestra
 
@@ -696,9 +698,7 @@ resumen_i9 <- datos_monitorizacion %>%
 
 ```
 
-**Definición Disfunción Hepática Asociada a la Nutrición Parenteral (<20%)**. De los 101 pacientes que pasan más de 7 días con NP, se excluyen del cálculo 17 registros que no contienen al menos el 50% de los datos en alguno de los controles (día 7 o alta). De los 84 restantes, 75 (89,29%, IC 80,16-94,68) cumplen los criterios de Disfunción Hepática Asociada a la Nutrición Parenteral (DHANP). 
-
-Cabe destacar que la inclusión de pacientes con registros incompletos tiende a infraestimar la incidencia de DHANP. Por otro lado, si se aplica una corrección para tener en cuenta los casos que ya presentaban DHANP al inicio de la NP, la incidencia acumulada es de 20 casos de 26 (76,92%, IC 55,92-90,25).
+**Definición Disfunción Hepática Asociada a la Nutrición Parenteral (<20%)**. De los 101 pacientes que pasan más de 7 días con NP, se excluyen del cálculo 17 registros que no contienen al menos el 50% de los datos en alguno de los controles (día 7 o alta). De los 84 restantes, 75 (89,29%, IC 80,16-94,68) cumplen los criterios de Disfunción Hepática Asociada a la Nutrición Parenteral (DHANP). Cabe destacar que la inclusión de pacientes con registros incompletos tiende a infraestimar la incidencia de DHANP. Por otro lado, si se aplica una corrección para tener en cuenta los casos que ya presentaban DHANP al inicio de la NP, la incidencia acumulada es de 20 casos de 26 (76,92%, IC 55,92-90,25).
 
 ```{r}
 # ---- I12. Disfunción hepática asociada a la NP ----
@@ -859,8 +859,10 @@ tabla_indicadores <- bind_rows(
   ) %>%
   
   kable(
-    col.names = c("Indicador", "Num.", "Denom.", "Resultado", 
-                    "IC 95% (inf – sup)", "Estándar")
+    caption = "*Tabla 2.* Resumen de indicadores",
+    col.names = c("Indicador", "Num.", "Denom.", "Resultado",
+                  "IC 95% (inf – sup)", "Estándar"),
+    align = "lccccc"
   )
 
 tabla_indicadores
@@ -876,7 +878,7 @@ El aporte nutricional, como se ha observado con los resultados del indicador 4, 
 Además, el grupo de pacientes con aporte insuficiente tarda más en recibir soporte nutricional ($p \approx 0,02$) e incluye sobretodo pacientes con NE (75% en ambos casos), mientras que el tipo de soporte en el grupo de aporte adecuado es más heterogéneo. En cuanto a los resultados, la estancia en el hospital del primer grupo dura menos días ($p = 0.006$), lo cual se podría relacionar con una mayor tasa de mortalidad en el grupo con aporte proteico insuficiente, aunque este resultado no es estadísticamente significativo.
 
 ```{r}
-# Características de la muestra por aporte nutricional
+# Características de la muestra por aporte calórico
 tabla_muestra_cal <- datos %>%
   mutate(
     Grupo_cal = factor(
@@ -887,8 +889,13 @@ tabla_muestra_cal <- datos %>%
   ) %>%
   
   caracterizacion_muestra(comparar = "Grupo_cal", 
-                          excluir = c("Kcal_14d", "gPROT_14d"))
+                          excluir = c("Kcal_14d", "gPROT_14d")) %>%
+  
+  modify_caption(
+    "*Tabla 3.* Características de la muestra por grupo de aporte calórico"
+  )
 
+# Características de la muestra por aporte proteico
 tabla_muestra_prot <- datos %>%
   mutate(
     Grupo_prot = factor(
@@ -899,7 +906,11 @@ tabla_muestra_prot <- datos %>%
   ) %>%
   
   caracterizacion_muestra(comparar = "Grupo_prot", 
-                          excluir = c("Kcal_14d", "gPROT_14d"))
+                          excluir = c("Kcal_14d", "gPROT_14d")) %>%
+  
+  modify_caption(
+    "*Tabla 4.* Características de la muestra por grupo de aporte proteico"
+  )
 
 tabla_muestra_cal
 tabla_muestra_prot
@@ -934,8 +945,8 @@ A continuación se desglosan los datos por grupos de cumplimiento teniendo en cu
 #' # Ejemplo de uso con datos hipotéticos
 #' analisis_aporte(df, media_calorias, 25, 30, "Calorías")
 #' }
-analisis_aporte <- function(datos, columna, valor_inf, valor_sup, 
-                           etiqueta = "variable") {
+analisis_aporte <- function(datos, columna, valor_inf, valor_sup,
+                            etiqueta = "variable") {
   
   # Intervalo de referencia
   intervalo_ref <- paste0(valor_inf, " - ", valor_sup)
@@ -973,11 +984,17 @@ analisis_aporte <- function(datos, columna, valor_inf, valor_sup,
       Porcentaje = round((Total_grupo / sum(Total_grupo)) * 100, 2)
     )
   
-  return(kable(error,
-               col.names = c("Categoría", "Recuento", "Porcentaje (%)"),
-               caption = paste0(
-                 "**", etiqueta, "** | Intervalo de referencia: ", intervalo_ref
-               )))
+  return(
+    kable(
+      error,
+      col.names = c("Categoría", "Recuento", "Porcentaje (%)"),
+      caption = paste(
+        etiqueta, paste("Intervalo de referencia:", intervalo_ref),
+        sep = "\n"
+      ),
+      align = "lcc"
+    )
+  )
 }
 
 # Tablas
@@ -987,7 +1004,7 @@ tabla_cal_aguda <- analisis_aporte(
 )
 tabla_cal_estable <- analisis_aporte(
   datos = datos, columna = Media_cal_estable, valor_inf = 25, valor_sup = 30,
-  etiqueta = "Aporte calórico en fase estable (kcal/kg/día)"
+  etiqueta = "*Tabla 5.* Aporte calórico en fase estable (kcal/kg/día)"
 )
 tabla_prot_aguda <- analisis_aporte(
   datos = datos, columna = Media_prot_aguda, valor_inf = 0.8, valor_sup = 1.2,
@@ -995,7 +1012,7 @@ tabla_prot_aguda <- analisis_aporte(
 )
 tabla_prot_estable <- analisis_aporte(
   datos = datos, columna = Media_prot_estable, valor_inf = 1.3, valor_sup = 1.5,
-  etiqueta = "Aporte proteico en fase estable (g/kg/día)"
+  etiqueta = "*Tabla 6.* Aporte proteico en fase estable (g/kg/día)"
 )
 
 tabla_cal_estable
@@ -1153,6 +1170,12 @@ Se muestran las tablas de contingencia (**Tabla 7**, **Tabla 8**) para el cambio
 
 En ambos casos, el valor $p$ es inferior a 0,001. Así, existe evidencia significativa de asimetría en la dirección del cambio. En las tablas se puede observar una tendencia a pasar de un aporte adecuado en fase aguda a no cumplir los requerimientos en fase estable, siendo mucho menor en sentido inverso.
 
+Para analizar las diferencias entre trayectorias de cumplimiento, se ha dividido la muestra en cuatro grupos: los que alcanzan los requerimientos en las dos fases (FA + FE), los que lo hacen solo en la fase aguda (FA) o en la fase estable (FE) y los que no llegan nunca al objetivo (Isuficiente). Se aprecian diferencias basales en el IMC, la presencia de comorbilidades, el estado nutricional y algunas características de la terapia nutricional, siendo las más importantes las observadas entre el grupo FA + FE y el de cumplimiento insuficiente (**Tabla E3**, **Tabla E4**).
+
+Además, existen diferencias entre los grupos de cumplimiento del aporte calórico en cuanto a las complicaciones gástricas. Por otro lado, el grupo FA recibe ventilación mecánica durante menos días que el grupo FE ($p = 0.024$) y tiene una estancia menor en la UCI ($p = 0.027$). El grupo FA también presenta una estancia menor que el grupo FA + FE tanto en la UCI ($p = 0.039$) como en el hospital ($p = 0.021$). La estancia media en el hospital del grupo FA + FE es también significativamente mayor que la del grupo Insuficiente ($p = 0.003$).
+
+Si se calculan los mismos contrastes para el aporte proteico, la mayoría de diferencias dejan de ser estadísticamente significativas. Únicamente se mantiene la diferencia en la estancia hospitalaria, que es mayor en el grupo FA + FE que en el grupo FA ($p = 0.002$) y en el grupo Insuficiente ($p = 0.001$). Los resultados deben interpretarse con cautela, puesto que los grupos de comparación son heterogéneos y las diferencias podrían ser ocasionadas por otros factores.
+
 En el **Anexo I** se incluye un diagrama de aluviones (**Fig. E3**) con un mayor detalle de la dinámica de los grupos de cumplimiento entre las dos fases.
 
 ```{r}
@@ -1165,6 +1188,7 @@ En el **Anexo I** se incluye un diagrama de aluviones (**Fig. E3**) con un mayor
 #' @param categoria El nombre de la variable a analizar ("CALORIA" o "PROT"). 
 #' @param valor_ag Numérico. Valor de corte en fase aguda.
 #' @param valor_es Numérico. Valor de corte en fase estable.
+#' @param etiqueta Cadena de texto (opcional). Encabezamiento del título de la tabla.
 #'
 #' @returns Una tabla objeto \code{knitr_kable} con los valores absolutos, los porcentajes y el valor p.
 #' 
@@ -1179,7 +1203,8 @@ En el **Anexo I** se incluye un diagrama de aluviones (**Fig. E3**) con un mayor
 #' # Ejemplo de uso con datos hipotéticos
 #' grupos_aporte(df, "CALORIA", 15, 20)
 #' }
-grupos_aporte <- function (datos, categoria, valor_ag, valor_es) {
+grupos_aporte <- function (datos, categoria, valor_ag, valor_es, 
+                           etiqueta = "") {
   # 1. Selección de columnas según la categoría
   if (categoria == "CALORIA") {
     col_aguda <- sym("Media_cal_aguda")
@@ -1249,16 +1274,21 @@ grupos_aporte <- function (datos, categoria, valor_ag, valor_es) {
     "Fase Aguda / Fase Estable", "Insuficiente (<80%)", "Adecuado (≥80%)", "Total"
   )
   
-  return(kable(df_tabla_cont,
-               caption = paste0(
-                 "**Evolución de los niveles de aporte ", variable,
-                 "** | Test de McNemar: ", p_text
-               ),
-               align = "lccc"))
+  return(
+    kable(
+      df_tabla_cont,
+      caption = paste(
+        paste(etiqueta, "Evolución de los niveles de aporte", variable),
+        paste("Test de McNemar:", p_text),
+        sep = "\n"
+      ),
+      align = "lccc"
+    )
+  )
 }
 
-tabla_evol_cal <- grupos_aporte(datos, "CALORIA", 15, 25)
-tabla_evol_prot <- grupos_aporte(datos, "PROT", 0.8, 1.3)
+tabla_evol_cal <- grupos_aporte(datos, "CALORIA", 15, 25, "*Tabla 7.*")
+tabla_evol_prot <- grupos_aporte(datos, "PROT", 0.8, 1.3, "*Tabla 8.*")
 
 tabla_evol_cal
 tabla_evol_prot
@@ -1276,7 +1306,8 @@ tabla_cal_4 <- datos %>%
     CALORIA4 = CALORIA4 / Peso_calculo
   ) %>%
   
-  analisis_aporte(CALORIA4, 25, 30, "Aporte calórico día 4 (kcal/kg/día)")
+  analisis_aporte(CALORIA4, 25, 30, 
+                  "*Tabla 9.* Aporte calórico día 4 (kcal/kg/día)")
 
 # Aporte proteico en el 4º día en NE
 tabla_prot_4 <- datos %>%
@@ -1286,7 +1317,8 @@ tabla_prot_4 <- datos %>%
     PROT4 = PROT4 / Peso_calculo
   ) %>%
   
-  analisis_aporte(PROT4, 1.3, 1.5, "Aporte proteico día 4 (g/kg/día)")
+  analisis_aporte(PROT4, 1.3, 1.5, 
+                  "*Tabla 10.* Aporte proteico día 4 (g/kg/día)")
 
 tabla_cal_4
 tabla_prot_4
@@ -1494,7 +1526,7 @@ tabla_dhanp_comp <- data.frame(
   
   kable(
     col.names = c("Evaluación", "NE", "Total NE", "NP", "Total NP", "Valor p"),
-    caption = "**Cumplimiento de criterios diagnósticos de DHANP**",
+    caption = "*Tabla 11.* Cumplimiento de criterios diagnósticos de DHANP",
     align = "lccccc"
   )
 
@@ -1519,7 +1551,9 @@ tabla_muestra_sup <- datos %>%
                       labels = c("Supervivientes", "No supervivientes"))
   ) %>%
   
-  caracterizacion_muestra(datos, comparar = "MUERTO28")
+  caracterizacion_muestra(datos, comparar = "MUERTO28") %>%
+  
+  modify_caption("*Tabla 12.* Características de la muestra por supervivencia")
 
 tabla_muestra_sup
 
@@ -1603,7 +1637,7 @@ Las variables propuestas son las siguientes:
 
 Aunque en el análisis estadístico se utilizan las variables numéricas si es posible, para facilitar la visualización se muestra la comparación de las curvas de Kaplan-Meier por grupos (e.g. riesgo nutricional, cumplimiento de los requerimientos de aporte). Se pueden observar diferencias significativas en los grupos de riesgo y estado nutricional (**Fig. 6A**, **Fig. 6B**). También se incluye el aporte proteico, con $p < 0,2$ (**Fig. 6D**).
 
-En el **Anexo II** se muestran los resultados del análisis univariante para las covariables de interés (**Tabla E3**). Se han incluido las variables con $p < 0,2$, además del sexo como factor de confusión. Por otro lado, se ha excluido la puntuación de la escala APACHE II por su alta correlación con el NUTRIC Score y la número de días de terapia nutricional, ya que no cumplía la hipótesis de riesgos proporcionales. El análisis de factores de inflaciónd de la varianza (VIF) no ha revelado otras variables potencialmente problemáticas (**Tabla E4**).
+En el **Anexo II** se muestran los resultados del análisis univariante para las covariables de interés (**Tabla E5**). Se han incluido las variables con $p < 0,2$, además del sexo como factor de confusión. También se ha excluido la puntuación de la escala APACHE II por su alta correlación con el NUTRIC Score y el número de días de terapia nutricional, que no cumplía la hipótesis de riesgos proporcionales. El análisis de factores de inflación de la varianza (VIF, por sus siglas en inglés) no ha revelado otras variables potencialmente problemáticas (**Tabla E6**).
 
 ```{r}
 # ---- Análisis de supervivencia (univariante) ----
@@ -1655,7 +1689,16 @@ datos_cox <- datos %>%
     TIPO_SN_Grupo = relevel(TIPO_SN_Grupo, "NE")
   ) %>%
   
-  # 4. Gestión de valores faltantes
+  # 4. Etiquetas de grupo diagnóstico
+  mutate(
+    STATUS3 = case_when(
+      STATUS3 == "QUIRURGICO" ~ "Quirúrgico",
+      STATUS3 == "MEDICO" ~ "Médico",
+      STATUS3 == "TRAUMA" ~ "Traumático"
+    )
+  ) %>%
+  
+  # 5. Gestión de valores faltantes
   drop_na(any_of(c("t", "evento", vars_indicadores, covariables)))
 
 ```
@@ -1788,7 +1831,8 @@ tabla_cox_univ <- bind_rows(univ_res)
 tabla_cox_univ <- tabla_cox_univ %>%
   kable(
     col.names = c("Variable", "HR", "IC 95%", "Test de Wald", "Valor p"),
-    caption = "**Análisis univariante de covariables**"
+    caption = "*Tabla E5.* Análisis univariante de covariables",
+    align = "lcccc"
   )
 
 rm(vars_indicadores, covariables)
@@ -1819,7 +1863,8 @@ tabla_vif <- vif(fit_vif)
 
 tabla_vif <- as.data.frame(tabla_vif) %>%
   kable(
-    caption = "**Análisis de factores de inflación de la varianza (VIF)**"
+    caption = "*Tabla E6.* Factores de inflación de la varianza (VIF)",
+    align = "lccc"
   )
 
 rm(vars_num)
@@ -1832,9 +1877,9 @@ Una vez seleccionadas las variables para el modelo saturado, se ha dividido el c
 
 El modelo final revela que la edad avanzada, la desnutrición (valorada con la herramienta VGS) y un valor elevado en la escala SOFA se asocian a una mayor mortalidad a los 28 días. En cambio, la adecuación a los objetivos de aporte proteico actuaría como agente protector. También se observa un menor riesgo de mortalidad en el grupo con diagnóstico traumatológico, en comparación al grupo de referencia con diagnóstico médico (**Tabla 13**). Al comparar las predicciones con el set de prueba se obtiene un índice de concordancia (C-Index) de 0,72.
 
-En el **Anexo II** se incluye el detalle de los diferentes pasos del algoritmo de selección de variables. En el test de riesgos proporcionales se obtiene signifiación estadística para los valores de NUTRIC Score y SOFA ($p \approx 0,035$). Aun así, teniendo en cuenta el elevado número de pacientes y que el valor p global es de 0,238, se considera que no representa un problema para la estabilidad del modelo (**Tabla E5**).
+En el **Anexo II** se incluye el detalle de los diferentes pasos del algoritmo de selección de variables. En el test de riesgos proporcionales se obtiene significaión estadística para los valores de NUTRIC Score y SOFA ($p \approx 0,035$). Aun así, teniendo en cuenta el elevado número de pacientes y que el valor $p$ global es de 0,238, se considera que no representa un problema para la estabilidad del modelo (**Tabla E7**).
 
-El diagnóstico de residuos muestra algunas observaciones influyentes, especialmente en el grupo diagnóstico (**Fig. E5**, **Fig. E6**). No obstante, la mayoría de datos se distribuye uniformemente alrededor de 0, así que no se condidera que se incumplan las suposiciones de la regresión de Cox.
+El diagnóstico de residuos muestra algunas observaciones influyentes, especialmente en el grupo diagnóstico (**Fig. E5**, **Fig. E6**). No obstante, la mayoría de datos se distribuye uniformemente alrededor de 0, así que no se considera que se incumplan las suposiciones de la regresión de Cox.
 
 ```{r}
 # ---- Análisis de supervivencia (multivariante) ----
@@ -1995,10 +2040,22 @@ fit_cox <- coxph(
 
 tabla_cox <- fit_cox %>%
   tbl_regression(
-    exponentiate = TRUE
+    exponentiate = TRUE,
+    label = list(
+      NUTRIC_Score ~ "NUTRIC Score",
+      VGSING2 ~ "Malnutrición (VGS)",
+      Adecuacion_obj_prot ~ "Aporte proteico adecuado (≥80%)",
+      EDAD ~ "Edad (años)",
+      STATUS3 ~ "Grupo diagnóstico",
+      SOFA1 ~ "SOFA (al ingreso)"
+    )
   ) %>%
   bold_p(t = 0.05) %>%
-  modify_header(label = "**Variable**")
+  modify_header(
+    label = "**Variable**",
+    p.value = "**Valor p**"
+  ) %>%
+  modify_caption("*Tabla 13.* Resultados de la regresión de Cox")
 
 tabla_cox
 
@@ -2007,7 +2064,10 @@ tabla_cox_zph <- cox.zph(fit_cox)
 plot_cox_zph <- ggcoxzph(tabla_cox_zph)
 
 tabla_cox_zph <- as.data.frame(tabla_cox_zph$table) %>%
-  kable(caption = "**Test de riesgos proporcionales**")
+  kable(
+    caption = "*Tabla E7.* Test de riesgos proporcionales",
+    align = "lccc"
+  )
 
 # 4. Gráficos de residuos
 plot_cox_dev <- ggcoxdiagnostics(fit_cox, type = "deviance", 
@@ -2113,7 +2173,8 @@ plot_bmi <- datos %>%
 #' Compara el aporte nutricional entre dos grupos con el test U de Mann-Whitney-Wilcoxon.
 #'
 #' @param datos Un \code{data.frame} o \code{tibble} que contiene los datos.
-#' @param categoria El nombre de la variable a analizar ("CALORIA" o "PROT"). 
+#' @param categoria El nombre de la variable a analizar ("CALORIA" o "PROT").
+#' @param etiqueta Cadena de texto (opcional). Encabezamiento del título de la tabla. 
 #'
 #' @returns Una tabla objeto \code{knitr_kable} con la mediana y RIQ de cada día para cada grupo y el valor p obtenido.
 #' 
@@ -2129,7 +2190,7 @@ plot_bmi <- datos %>%
 #' progresion_aporte(df, "CALORIA")
 #' progresion_aporte(df, "PROT")
 #' }
-comparacion_aporte <- function(datos, categoria) {
+comparacion_aporte <- function(datos, categoria, etiqueta = "") {
   # 1. Determinación de variables según la categoría
   caloria <- categoria == "CALORIA"
   variable <- if_else(caloria, "calórico", "proteico")
@@ -2195,18 +2256,20 @@ comparacion_aporte <- function(datos, categoria) {
       `Valor p` = p
     )
   
-  return(kable(
-    tabla,
-    caption = paste0(
-      "**Comparación de aporte ", variable, "** (", unidades, ")"
-    ),
-    align = "crcrcr"
-  ))
+  return(
+    kable(
+      tabla,
+      caption = paste0(
+        etiqueta, " Comparación de aporte ", variable, " (", unidades, ")"
+      ),
+      align = "crcrcr"
+    )
+  )
 }
 
 
-tabla_comp_cal <- comparacion_aporte(datos, "CALORIA")
-tabla_comp_prot <- comparacion_aporte(datos, "PROT")
+tabla_comp_cal <- comparacion_aporte(datos, "CALORIA", etiqueta = "*Tabla E1.*")
+tabla_comp_prot <- comparacion_aporte(datos, "PROT", etiqueta = "*Tabla E2.*")
 
 tabla_comp_cal
 tabla_comp_prot
@@ -2305,36 +2368,79 @@ plot_cumplimiento
 
 ```{r}
 # Características de la muestra según trayectoria de cumplimiento
-tabla_muestra_evol <- datos %>%
+datos <- datos %>%
+  # Cumplimiento por fases
   mutate(
     cal_ok_ag = Media_cal_aguda >= (0.8 * 15),
-    prot_ok_ag = Media_prot_aguda >= (0.8 * 0.8),
     cal_ok_es = Media_cal_estable >= (0.8 * 25),
-    prot_ok_es = Media_prot_estable >= (0.8 * 1.3),
     
-    ok_aguda = cal_ok_ag & prot_ok_ag,
-    ok_estable = cal_ok_es & prot_ok_es
+    prot_ok_ag = Media_prot_aguda >= (0.8 * 0.8),
+    prot_ok_es = Media_prot_estable >= (0.8 * 1.3)
   ) %>%
-  filter(!is.na(ok_aguda) & !is.na(ok_estable)) %>%
+  filter(!is.na(cal_ok_es) & !is.na(prot_ok_es)) %>%
+  
   
   mutate(
-    Grupo_evol = case_when(
-      ok_aguda & ok_estable ~ "FA + FE",
-      ok_aguda & !ok_estable ~ "Solo FA",
-      !ok_aguda & ok_estable ~ "Solo FE",
-      !ok_aguda & !ok_estable ~ "Insuficiente"
+    Grupo_cal = case_when(
+      cal_ok_ag & cal_ok_es ~ "FA + FE",
+      cal_ok_ag & !cal_ok_es ~ "Solo FA",
+      !cal_ok_ag & cal_ok_es ~ "Solo FE",
+      !cal_ok_ag & !cal_ok_es ~ "Insuficiente"
     ),
-    Grupo_evol = factor(Grupo_evol,
+    Grupo_cal = factor(Grupo_cal,
+                        levels = c("FA + FE", 
+                                   "Solo FA", 
+                                   "Solo FE", 
+                                   "Insuficiente")),
+    
+    Grupo_prot = case_when(
+      prot_ok_ag & prot_ok_es ~ "FA + FE",
+      prot_ok_ag & !prot_ok_es ~ "Solo FA",
+      !prot_ok_ag & prot_ok_es ~ "Solo FE",
+      !prot_ok_ag & !prot_ok_es ~ "Insuficiente"
+    ),
+    Grupo_prot = factor(Grupo_prot,
                         levels = c("FA + FE", 
                                    "Solo FA", 
                                    "Solo FE", 
                                    "Insuficiente"))
-  ) %>%
-  
-  caracterizacion_muestra(comparar = "Grupo_evol", 
-                          excluir = c("Kcal_14d", "gPROT_14d"))
+  )
 
-tabla_muestra_evol
+tabla_muestra_evol_cal <- caracterizacion_muestra(
+  datos, comparar = "Grupo_cal", excluir = c("Kcal_14d", "gPROT_14d")
+) %>%
+  modify_caption(
+    "*Tabla E3.* Características de la muestra por evolución de aporte calórico"
+  )
+
+tabla_muestra_evol_prot <- caracterizacion_muestra(
+  datos, comparar = "Grupo_prot", excluir = c("Kcal_14d", "gPROT_14d")
+) %>%
+  modify_caption(
+    "*Tabla E4.* Características de la muestra por evolución de aporte proteico"
+  )
+  
+tabla_muestra_evol_cal
+tabla_muestra_evol_prot
+
+```
+
+```{r, results='hide'}
+# Correcciones post-hoc
+categoria <- c("Grupo_cal", "Grupo_prot")
+vars_dunn <- c("BMI", "SOFA1", "HORASIN", "TOTAL_DIAS_SN", 
+               "DIASVM", "DIAS_UCI", "DIAS_HOSP")
+
+for (cat in categoria) {
+  for (var in vars_dunn) {
+    formula_dunn <- as.formula(paste(var, "~", cat))
+    test <- dunnTest(formula_dunn, data = datos, method = "bonferroni")
+    table <- kable(test$res, digits = 3, caption = paste(var, cat))
+    print(table)
+  }
+}
+
+rm(categoria, vars_dunn, cat, var, formula_dunn, test, table)
 
 ```
 
